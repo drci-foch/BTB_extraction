@@ -22,13 +22,6 @@ Note:
 - It requires the 'openpyxl' engine to write to Excel, so ensure this dependency is installed.
 """
 
-
-import pandas as pd
-import warnings
-import argparse
-
-warnings.filterwarnings("ignore")  # Ignore warnings to ensure clean output
-
 def process_and_save_data_summary(excel_file_path):
     """
     Reads an Excel file, cleans data, and generates summary statistics including
