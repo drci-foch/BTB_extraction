@@ -73,7 +73,8 @@ def extract_technique(text):
     """
     # Most found pattern
     technique_pattern = r"(2\.|II\.|I\.|2/|2°/)[\s+]*(Biopsies\s+trans[ -]*bronchiques|Biopsies\s+transbronchiques|Biospies\s+transbronchiques|BTB)[\s\S+]*?Technique[^\S\r\n]*:[^\S\r\n]*([^;]+)"
-    technique_match = re.search(technique_pattern, text, re.DOTALL | re.IGNORECASE)
+    technique_match = re.search(
+        technique_pattern, text, re.DOTALL | re.IGNORECASE)
 
     if not technique_match:
         # Sometimes, there isn't the numbers, only "Biopsie" in text etc..
@@ -141,7 +142,8 @@ def extract_niveaux_coupes(text):
             # Else, look at any mention of technique in the document
             else:
                 last_fallback_pattern = r"Technique\s*:\s*([^;]+);\s*([^n]+)"
-                last_fallback_match = re.search(last_fallback_pattern, text, re.DOTALL)
+                last_fallback_match = re.search(
+                    last_fallback_pattern, text, re.DOTALL)
                 if last_fallback_match:
                     return last_fallback_match.group(2).strip()
 
@@ -236,7 +238,8 @@ PATTERNS = [
     },
     # Technique -> Trop particulier, on a la propre fonction
     # Niveau de coupes -> De même
-    {"field": "Site", "pattern": r"(Site[\s\xa0]*:)([\S]*[^\n]+)", "group_index": 2},
+    {"field": "Site",
+        "pattern": r"(Site[\s\xa0]*:)([\S]*[^\n]+)", "group_index": 2},
     {
         "field": "Nombre de fragment alvéolaire",
         "pattern": r"(Nombre[\s\xa0]*de[\s\xa0]*fragments[\s\xa0]*alvéolaires[\s\xa0]*:)([\S]*[^\n]+)",
@@ -447,14 +450,11 @@ if __name__ == "__main__":
         type=str,
         help="The path to the folder containing text files to process.",
     )
-
     args = parser.parse_args()
 
-    # Use the directory_path from the command-line arguments
     directory_path = args.directory_path
     df = process_text_files_in_directory(directory_path)
 
-    # Optionally, you can also take the output file name as an argument
     df.to_excel("BTBextract_2020-2021.xlsx", index=False)
     print(
         "Extraction complete! You can see the result in the Extractor folder named as 'BTBextract_2020-2021.xlsx'"
