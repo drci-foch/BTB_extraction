@@ -1,8 +1,9 @@
+import argparse
 import os
-import pandas as pd
 import re
 import warnings
-import argparse
+
+import pandas as pd
 
 warnings.filterwarnings("ignore")
 
@@ -15,10 +16,10 @@ Usage:
 To run this script, provide the directory path containing the BTB text documents as a command-line argument. The script will process all text files within the specified directory, extract the relevant information, and compile it into an Excel file named 'BTBextract_2020-2021.xlsx'.
 
 Example:
-python your_script_name.py <path_to_your_folder_
+python your_script_name.py <path_to_your_folder>
 
 Dependencies:
-- Python 3.x
+- Python 3.11
 - pandas library
 - openpyxl library (for writing to Excel)
 
