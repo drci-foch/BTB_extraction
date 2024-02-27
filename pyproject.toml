@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "btb-extraction"
+version = "0.1.0"
+description = ""
+authors = ["sarrabenyahia <93934407+sarrabenyahia@users.noreply.github.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pandas = "^2.2.1"
+ipykernel = "^6.29.3"
+openpyxl = "^3.1.2"
+matplotlib = "^3.8.3"
+pymupdf = "^1.23.25"
+pyodbc = "^5.1.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
