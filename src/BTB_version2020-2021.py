@@ -73,38 +73,41 @@ def extract_technique(text):
     - str or None: The extracted technique if found, otherwise None.
     """
     # Most found pattern
-    technique_pattern = r"(2\.|II\.|I\.|2/|2°/)[\s+]*(Biopsies\s+trans[ -]*bronchiques|Biopsies\s+transbronchiques|Biospies\s+transbronchiques|BTB)[\s\S+]*?Technique[^\S\r\n]*:[^\S\r\n]*([^;]+)"
+    technique_pattern = r"(2\.|II\.|I\.|2/|2°/)[\s+]*(Biopsies\s+trans[ -]*bronchiques|Biopsies\s+transbronchiques|Biospies\s+transbronchiques|BTB)(?:(?!LAVAGE)[\s\S+])*?Technique[^\S\r\n]*:[^\S\r\n]*([^;]+)"
     technique_match = re.search(
         technique_pattern, text, re.DOTALL | re.IGNORECASE)
+    if technique_match:
+        return technique_match.group(3).strip()
 
-    if not technique_match:
-        # Sometimes, there isn't the numbers, only "Biopsie" in text etc..
-        fallback_technique_pattern = r"(Biopsies\s+trans[ -]*bronchiques|Biopsies\s+transbronchiques|Biospies\s+transbronchiques|BTB)[\s\S+]*?Technique\s*:\s*([^;]+)"
-        fallback_match = re.search(fallback_technique_pattern, text, re.DOTALL)
-        if fallback_match:
-            return fallback_match.group(2).strip()
+    # Sometimes, there isn't the numbers, only "Biopsie" in text etc..
+    fallback_technique_pattern = r"(Biopsies\s+trans[ -]*bronchiques|Biopsies\s+transbronchiques|Biospies\s+transbronchiques|BTB)(?:(?!LAVAGE)[\s\S])*?Technique\s*:\s*([^;]+)"
+    fallback_match = re.search(fallback_technique_pattern, text, re.DOTALL)
+    if fallback_match:
+        return fallback_match.group(2).strip()
 
-        else:
-            # No mention of biopsie or lavage, just the mention of techniques two times. The BTB technique is always second.
-            parts = re.split(r"(?=Technique\s*:)", text, flags=re.IGNORECASE)
-            two_parts_fallback_technique_pattern = r"Technique\s*:\s*([^;]+)"
-            if len(parts) > 2:
-                two_parts_fallback_match = re.search(
-                    two_parts_fallback_technique_pattern, parts[-1], re.DOTALL
-                )
-                if two_parts_fallback_match:
-                    return two_parts_fallback_match.group(1).strip()
+    # Check for HES after failing to find the first two patterns
+    if "HES" in text:
+        return "HES"
 
-            # Else, look at any mention of technique in the document
-            else:
-                last_fallback_technique_pattern = r"Technique\s*:\s*([^;]+)"
-                last_fallback_match = re.search(
-                    last_fallback_technique_pattern, text, re.DOTALL
-                )
-                if last_fallback_match:
-                    return last_fallback_match.group(1).strip()
+    # No mention of biopsie or lavage, just the mention of techniques two times. The BTB technique is always second.
+    parts = re.split(r"(?=Technique\s*:)", text, flags=re.IGNORECASE)
+    if len(parts) > 2:
+        two_parts_fallback_technique_pattern = r"Technique\s*:\s*([^;]+)"
+        two_parts_fallback_match = re.search(
+            two_parts_fallback_technique_pattern, parts[-1], re.DOTALL
+        )
+        if two_parts_fallback_match:
+            return two_parts_fallback_match.group(1).strip()
 
-    return technique_match.group(3).strip() if technique_match else None
+    # Else, look at any mention of technique in the document
+    last_fallback_technique_pattern = r"Technique\s*:\s*([^;]+)"
+    last_fallback_match = re.search(
+        last_fallback_technique_pattern, text, re.DOTALL
+    )
+    if last_fallback_match:
+        return None #last_fallback_match.group(1).strip()
+
+    return None
 
 
 def extract_niveaux_coupes(text):
@@ -121,34 +124,39 @@ def extract_niveaux_coupes(text):
     # Most found pattern
     pattern = r"(2\.|II\.|I\.|2/|2°/)[\s+]*(Biopsies\s+trans[ -]*bronchiques|Biopsies\s+transbronchiques|Biospies\s+transbronchiques|BTB)[\s\S+]*?Technique\s*:\s*([^;]+);\s*([^n]+)"
     match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+    if match:
+        return match.group(4).strip()
 
-    if not match:
-        # Sometimes, there isn't the numbers, only "Biopsie" in text etc..
-        fallback_pattern = r"(Biopsies\s+trans[ -]*bronchiques|Biopsies\s+transbronchiques|Biospies\s+transbronchiques|BTB)[\s\S+]*?Technique\s*:\s*([^;]+);\s*([^n]+)"
-        fallback_match = re.search(fallback_pattern, text, re.DOTALL)
-        if fallback_match:
-            return fallback_match.group(3).strip()
 
-        else:
-            # No mention of biopsie or lavage, just the mention of techniques two times. The BTB technique is always second.
-            parts = re.split(r"(?=Technique\s*:)", text, flags=re.IGNORECASE)
-            two_parts_fallback_pattern = r"Technique\s*:\s*([^;]+);\s*([^n]+)"
-            if len(parts) > 2:
-                two_parts_fallback_match = re.search(
-                    two_parts_fallback_pattern, parts[-1], re.DOTALL
-                )
-                if two_parts_fallback_match:
-                    return two_parts_fallback_match.group(2).strip()
+    # Sometimes, there isn't the numbers, only "Biopsie" in text etc..
+    fallback_pattern = r"(Biopsies\s+trans[ -]*bronchiques|Biopsies\s+transbronchiques|Biospies\s+transbronchiques|BTB)(?:(?!LAVAGE)[\s\S])*?Technique\s*:\s*([^;]+);\s*([^n]+)"
+    fallback_match = re.search(fallback_pattern, text, re.DOTALL)
+    if fallback_match:
+        return fallback_match.group(3).strip()
 
-            # Else, look at any mention of technique in the document
-            else:
-                last_fallback_pattern = r"Technique\s*:\s*([^;]+);\s*([^n]+)"
-                last_fallback_match = re.search(
-                    last_fallback_pattern, text, re.DOTALL)
-                if last_fallback_match:
-                    return last_fallback_match.group(2).strip()
+    # Check for HES after failing to find the first two patterns
+    if "HES" in text:
+        return None
 
-    return match.group(4).strip() if match else None
+    # No mention of biopsie or lavage, just the mention of techniques two times. The BTB technique is always second.
+    parts = re.split(r"(?=Technique\s*:)", text, flags=re.IGNORECASE)
+    if len(parts) > 2:
+        two_parts_fallback_technique_pattern = r"Technique\s*:\s*([^;]+);\s*([^n]+)"
+        two_parts_fallback_match = re.search(
+            two_parts_fallback_technique_pattern, parts[-1], re.DOTALL
+        )
+        if two_parts_fallback_match:
+            return two_parts_fallback_match.group(2).strip()
+
+    # Else, look at any mention of technique in the document
+    last_fallback_technique_pattern = r"Technique\s*:\s*([^;]+);\s*([^n]+)"
+    last_fallback_match = re.search(
+        last_fallback_technique_pattern, text, re.DOTALL
+    )
+    if last_fallback_match:
+        return last_fallback_match.group(2).strip()
+
+    return None
 
 
 def extract_information(text, patterns):
@@ -218,11 +226,20 @@ def process_text_files_in_directory(directory_path):
 
     return df
 
+def sanitize_for_excel(value):
+    # Remove characters that are illegal in Excel sheet names
+    if isinstance(value, str):
+        # This regex removes control characters (\x00-\x1F) and (\x7F)
+        sanitized_value = re.sub(r'[\x00-\x1F\x7F]', '', value)
+ 
+        return sanitized_value
+    
+    return value
 
 PATTERNS = [
     {
         "field": "Nom",
-        "pattern": r"(?i)(^Nom\s*:\s*|Nom[\s+]*usuel\s*:\s*|Nom\s*:\s*)([A-Z]+)",
+        "pattern": r"(?i)(^Nom\s*:\s*|Nom[\s+]*usuel\s*:\s*|Nom\s*:\s*)([A-Z]+(\s[A-Z]+)?)",
         "group_index": 2,
     },
     # Prénom -> Propre fonction
@@ -234,7 +251,7 @@ PATTERNS = [
     {"field": "Sexe", "pattern": r"Sexe\s*:\s*([MF])", "group_index": 1},
     {
         "field": "Date de prélèvement",
-        "pattern": r"(?i)(Prélevé le \s*:\s*|Prélevé[\s+]*le\s*:\s*)(\d{2}/\d{2}/\d{4})",
+        "pattern": r"(?i)(Prélevé[\s\xa0]*le[\s\xa0]*[\s\xa0]*:[\s\xa0]*)(\d{2}/\d{2}/\d{4})",
         "group_index": 2,
     },
     # Technique -> Trop particulier, on a la propre fonction
@@ -243,8 +260,8 @@ PATTERNS = [
         "pattern": r"(Site[\s\xa0]*:)([\S]*[^\n]+)", "group_index": 2},
     {
         "field": "Nombre de fragment alvéolaire",
-        "pattern": r"(Nombre[\s\xa0]*de[\s\xa0]*fragments[\s\xa0]*alvéolaires[\s\xa0]*:)([\S]*[^\n]+)",
-        "group_index": 2,
+        "pattern": r"(Nombre[\s\xa0]*de[\s\xa0]*fragments[\s\xa0]*alvéolaires[\s\xa0]*:|Nombre[\s\xa0]*de[\s\xa0]*fragments[\s\xa0]*de[\s\xa0]*tissu(s)?[\s\xa0]*alvéolaire(s)?[\s\xa0]*:)([\S]*[^\n]+)",
+        "group_index": 4,
     },
     {
         "field": "Bronches/Bronchioles",
@@ -393,8 +410,8 @@ PATTERNS = [
     },
     {
         "field": "Conclusion",
-        "pattern": r"(Conclusion[\s\xa0]*(:.*|)?)([\s\S]*)",
-        "group_index": 3,
+        "pattern": r"((Conclusion|C[\s\xa0]O[\s\xa0]N[\s\xa0]C[\s\xa0]L[\s\xa0]U[\s\xa0]S[\s\xa0]I[\s\xa0]O[\s\xa0]N)[\s\xa0]*(:.*|))([\s\S]*)",
+        "group_index": 4,
     },
 ]
 
@@ -405,7 +422,7 @@ COLUMN_ORDER = [
     "Prénom",
     "Date de naissance",
     "Sexe",
-    "Date de Prélèvement",
+    "Date de prélèvement",
     "Technique",
     "Niveaux de coupes",
     "Site",
@@ -455,6 +472,7 @@ if __name__ == "__main__":
 
     directory_path = args.directory_path
     df = process_text_files_in_directory(directory_path)
+    df['Conclusion'] = df['Conclusion'].apply(sanitize_for_excel)
 
     df.to_excel("BTBextract_2020-2021.xlsx", index=False)
     print(
