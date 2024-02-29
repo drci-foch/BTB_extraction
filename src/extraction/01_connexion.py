@@ -29,7 +29,7 @@ with connection.cursor() as cursor:
             pat_ipp = row[0]  # Get pat_ipp
             doc_stockage_id = row[4]  # Get doc_stockage_id (original file name)
             fil_data = row[5]  # Get file data
-            filename = f"..//..//./data//extract_easily//{pat_ipp}_{doc_stockage_id}.pdf"
+            filename = f"..//..//..//./data//extract_easily//{pat_ipp}_{doc_stockage_id}.pdf"
             with open(filename, 'wb') as newfile:
                 newfile.write(fil_data)
 # Closing cursor and connection
