@@ -27,7 +27,7 @@ Make sure these dependencies are installed in your Python environment before run
 """
 
 
-def read_text_file(file_path):
+def read_text_file(file_path, encoding='windows-1252'):
     """
     Reads the content of a text file and returns it as a string.
 
@@ -37,7 +37,7 @@ def read_text_file(file_path):
     Returns:
     - str: The content of the file.
     """
-    with open(file_path, "r", encoding="utf-8") as file:
+    with open(file_path, "r",encoding) as file:
         return file.read()
 
 
@@ -178,10 +178,20 @@ def extract_information(text, patterns):
     for item in patterns:
         field = item["field"]
         pattern = item["pattern"]
-        group_index = item["group_index"]
+        group_index = item.get("group_index")
         match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+        
         if match:
-            results[field] = match.group(group_index).strip()
+            # Special handling for the "Nom" field to concatenate groups 3 and 4
+            if field == "Nom" and len(match.groups()) >= 4:
+                # Assuming groups 3 and 4 may contain the parts of the name you're interested in
+                part3 = match.group(3) if match.group(3) is not None else ''
+                part4 = match.group(4) if match.group(4) is not None else ''
+                # Concatenate the parts, trimming any leading/trailing whitespace
+                results[field] = (part3 + part4).strip()
+            else:
+                # For all other fields, or if "Nom" does not have groups 3 and 4
+                results[field] = match.group(group_index).strip()
         else:
             results[field] = None
     return results
@@ -203,7 +213,7 @@ def process_text_files_in_directory(directory_path):
     for filename in os.listdir(directory_path):
         if filename.endswith(".txt"):
             file_path = os.path.join(directory_path, filename)
-            with open(file_path, "r", encoding="utf-8") as file:
+            with open(file_path, "r") as file:
                 text = file.read()
 
             info = extract_information(text, PATTERNS)
@@ -239,8 +249,8 @@ def sanitize_for_excel(value):
 PATTERNS = [
     {
         "field": "Nom",
-        "pattern": r"(?i)(^Nom\s*:\s*|Nom[\s+]*usuel\s*:\s*|Nom\s*:\s*)([A-Z]+(\s[A-Z]+)?)",
-        "group_index": 2,
+        "pattern": r"(?i)((?<!Pré)Nom\s*:\s*|Nom[\s+]*usuel\s*:\s*)(?:Mme\s+)?(([A-Z]+)([\s]*(?:\s*(Pr))?[A-Z]*))(?:\s*(Destinataire))?",
+        "group_index": 3,
     },
     # Prénom -> Propre fonction
     {
@@ -474,7 +484,7 @@ if __name__ == "__main__":
     df = process_text_files_in_directory(directory_path)
     df['Conclusion'] = df['Conclusion'].apply(sanitize_for_excel)
 
-    df.to_excel("BTBextract_2020-2021.xlsx", index=False)
+    df.to_excel(".././output/BTB_structurated_raw.xlsx", index=False)
     print(
-        "Extraction complete! You can see the result in the Extractor folder named as 'BTBextract_2020-2021.xlsx'"
+        "Extraction complete! You can see the result in the Extractor folder named as 'BTB_structurated_raw.xlsx'"
     )

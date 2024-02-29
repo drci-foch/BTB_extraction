@@ -119,12 +119,12 @@ def save_summaries_to_excel(unique_values_counts, na_counts, na_counts_by_year, 
     - na_counts_by_year (DataFrame): The count of NA values for each column by year.
     - unique_values_df (DataFrame): The DataFrame of unique values for selected columns.
     """
-    with pd.ExcelWriter("./output/data_summary.xlsx", engine="openpyxl", mode="w") as writer:
+    with pd.ExcelWriter(".././output/BTB_summary.xlsx", engine="openpyxl", mode="w") as writer:
         unique_values_counts.to_frame(name="Unique Values Count").to_excel(writer, sheet_name="Unique Values Counts")
         na_counts.to_frame(name="NA Counts").to_excel(writer, sheet_name="NA Counts")
         na_counts_by_year.to_excel(writer, sheet_name="NA Counts by Year")
         unique_values_df.to_excel(writer, sheet_name="Unique Values")
-    print("DataFrames are saved in 'data_summary.xlsx'.")
+    print("DataFrames are saved in 'BTB_summary.xlsx'.")
 
 def main():
     """
