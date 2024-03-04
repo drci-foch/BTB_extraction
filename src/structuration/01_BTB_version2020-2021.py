@@ -246,6 +246,9 @@ def sanitize_for_excel(value):
     
     return value
 
+def remove_illegal_chars(s):
+    # This will remove characters which are not printable; adjust as needed
+    return re.sub(r'[^\x20-\x7E]', '', s) if isinstance(s, str) else s
 PATTERNS = [
     {
         "field": "Nom",
@@ -295,8 +298,8 @@ PATTERNS = [
     },
     {
         "field": "Bronchiolite oblitérante",
-        "pattern": r"Bronchiolite[\s\xa0]*(oblitérante|constrictive)[\s\xa0]*:*[\s\xa0]*([\w\s]*)",
-        "group_index": 2,
+        "pattern": r"Bronchiolite[\s\xa0]*(oblitérante|constrictive)(?:[\s\xa0]*\((0[\s\xa0]*ou[\s\xa0]*1)\))?[\s\xa0]*:[\s\xa0]*(\w)",
+        "group_index": 3,
     },
     {
         "field": "Fibro-élastose interstitielle",
@@ -482,6 +485,8 @@ if __name__ == "__main__":
 
     directory_path = args.directory_path
     df = process_text_files_in_directory(directory_path)
+    for col in df.select_dtypes(include=['object']).columns: 
+        df[col] = df[col].apply(remove_illegal_chars)
     df['Conclusion'] = df['Conclusion'].apply(sanitize_for_excel)
 
     df.to_excel(".././output/BTB_structurated_raw.xlsx", index=False)
