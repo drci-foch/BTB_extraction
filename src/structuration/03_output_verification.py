@@ -39,7 +39,8 @@ def process_and_save_data_summary(excel_file_path):
     # Read the Excel file
     df = pd.read_excel(excel_file_path)
     # Convert date column to datetime format, assuming day first
-    df["Date de prélèvement"] = pd.to_datetime(df["Date de prélèvement"], dayfirst=True)
+    df["Date de prélèvement"] = pd.to_datetime(df["Date de prélèvement"], dayfirst=True, errors='coerce')
+
 
     # Prepare summary statistics
     unique_values_dict, skip_columns = prepare_summary_statistics(df)
