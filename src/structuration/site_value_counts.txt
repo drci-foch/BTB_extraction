@@ -1,0 +1,39 @@
+Site	count
+Unknown	2803
+right lower lobe, right middle lobe	1975
+right lower lobe	1339
+right middle lobe, right lower lobe	363
+left lower lobe	360
+left lower lobe, lingula	141
+right middle lobe	52
+lingula, left lower lobe	37
+right	23
+right lower lobe, lingula	10
+left	9
+right upper lobe, right lower lobe	9
+lingula	5
+right upper lobe	4
+right lower lobe, right upper lobe	3
+right lower loberight middle lobe	3
+middle lower lobe, right lower lobe	3
+lingula, right lower lobe	2
+left upper lobe	2
+right middle lobe, right	2
+right middle lobe, left lower lobe	2
+right lower lobe, left lower lobe	2
+left lower lobe, right middle lobe	2
+commubuy	1
+right lower lobe, right	1
+right middle lobe, li	1
+left lower lobe, left upper lobe	1
+right right middle lobe	1
+left upper lobe, left lower lobe	1
+curight middle lobeen left lower lobe	1
+lobe, moyen right lower lobe, right	1
+right lower lobe, ml	1
+left lower lobe, left lower lobeula	1
+right middle lobe, led	1
+right lower lobe, right middle lobed	1
+left lower lobe, curight middle lobeen	1
+right middle lobe, lin	1
+lingula, li	1
