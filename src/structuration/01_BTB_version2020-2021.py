@@ -18,11 +18,6 @@ To run this script, provide the directory path containing the BTB text documents
 Example:
 python your_script_name.py <path_to_your_folder>
 
-Dependencies:
-- Python 3.11
-- pandas library
-- openpyxl library (for writing to Excel)
-
 Make sure these dependencies are installed in your Python environment before running the script.
 """
 
@@ -220,7 +215,7 @@ def process_text_files_in_directory(directory_path):
             info["Prénom"] = extract_prenom_before_docteur(text)
             # Directly add or update keys in the dictionary
             info["Filename"] = filename
-            info["IPP"] = filename[:9]
+            info["IPP"] = filename.split("_")[0]
             info["Technique"] = extract_technique(text)
             info["Niveaux de coupes"] = extract_niveaux_coupes(text)
             data.append(info)
@@ -261,6 +256,13 @@ PATTERNS = [
         "pattern": r"(?i)(Date[\s+]*de[\s+]*naissance\s*:\s*)(\d{2}/\d{2}/\d{4})",
         "group_index": 2,
     },
+
+    {
+        "field": "Biopsy ID",
+        "pattern": r"((N°\s+de\s+demande\s+:\s+)|(N°\s+P\s+)|(N°\s+S\s+))(\w+-\w+|\w+.\w+)",
+        "group_index": 5,
+    },
+
     {"field": "Sexe", "pattern": r"Sexe\s*:\s*([MF])", "group_index": 1},
     {
         "field": "Date de prélèvement",
@@ -431,6 +433,7 @@ PATTERNS = [
 COLUMN_ORDER = [
     "Filename",
     "IPP",
+    "Biopsy ID",
     "Nom",
     "Prénom",
     "Date de naissance",

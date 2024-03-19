@@ -191,14 +191,13 @@ df['Inflammation Lymphocytaire'] = df['Inflammation Lymphocytaire'].apply(standa
 def standardize_values_brochioliobli(val):
     if pd.isna(val):
         return None
-    val = str(val)  # Ensure the value is a string
+    val = str(val)  
     if val.lower() in ["0", "n"]:
         return "0"
     elif val.lower() in ["p","o"]:
         return "1"
 
     else:
-        # Return the value as is for specific conditions or statuses
         return ""
 
 
@@ -207,14 +206,13 @@ df['Bronchiolite oblitérante'] = df['Bronchiolite oblitérante'].apply(standard
 def standardize_values_fibroelastoseinters(val):
     if pd.isna(val):
         return None
-    val = str(val)  # Ensure the value is a string
+    val = str(val)  
     if val.lower() in ["0", "non"]:
         return "0"
     elif val.lower() in ["1","atteinte"]:
         return "1"
 
     else:
-        # Return the value as is for specific conditions or statuses
         return ""
     
 df['Fibro-élastose interstitielle'] = df['Fibro-élastose interstitielle'].apply(standardize_values_fibroelastoseinters)
@@ -564,6 +562,6 @@ def clean_esino(text):
 df['Eosinophilie (interstitielle/alvéolaire)'] = df['Eosinophilie (interstitielle/alvéolaire)'].apply(clean_agentpath)
 df['Remodelage vasculaire'] = df['Remodelage vasculaire'].apply(clean_agentpath)
 df['Matériel étranger d’inhalation'] = df['Matériel étranger d’inhalation'].apply(clean_agentpath)
-
+df['IPP'] = "0" + df['IPP'].astype(str)
 
 df.to_excel('../output/BTB_structurated_cleaned.xlsx', index=False)
