@@ -428,6 +428,39 @@ PATTERNS = [
         "pattern": r"((Conclusion|C[\s\xa0]O[\s\xa0]N[\s\xa0]C[\s\xa0]L[\s\xa0]U[\s\xa0]S[\s\xa0]I[\s\xa0]O[\s\xa0]N)[\s\xa0]*(:.*|))([\s\S]*)",
         "group_index": 4,
     },
+    #---------------------EXTRACTION KEWIN PIDEO----------------------
+
+    # {
+    #     "field": "Macrophages",
+    #     "pattern": r"(Macrophages[\s\xa0]*(\(oui\/non\)|)?[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+    #     "group_index": 3,
+    # },
+
+    # {
+    #     "field": "Lymphocytes",
+    #     "pattern": r"(Lymphocytes[\s\xa0]*(\(oui\/non\)|)?[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+    #     "group_index": 3,
+    # },
+
+    # {
+    #     "field": "Polynucléaires neutrophiles",
+    #     "pattern": r"(Polynucléaires[\s\xa0]*neutrophiles[\s\xa0]*(\(oui\/non\)|)?[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n]+)",
+    #     "group_index": 3,
+    # },
+
+    # {
+    #     "field": "Polynucléaires éosinophiles",
+    #     "pattern": r"(Polynucléaires[\s\xa0]*éosinophiles[\s\xa0]*(\(oui\/non\)|)?[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+    #     "group_index": 3,
+    # },
+
+    # {
+    #     "field": "Autres éléments",
+    #     "pattern": r"(Autres[\s\xa0]*éléments[\s\xa0]*(\(oui\/non\)|)?[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])+",
+    #     "group_index": 3,
+    # }
+    #-----------------------------------------------------------
+
 ]
 
 COLUMN_ORDER = [
@@ -439,6 +472,13 @@ COLUMN_ORDER = [
     "Date de naissance",
     "Sexe",
     "Date de prélèvement",
+    #---------------------EXTRACTION KEWIN PIDEO----------------------
+    # "Macrophages",
+    # "Lymphocytes",
+    # "Polynucléaires neutrophiles",
+    # "Polynucléaires éosinophiles",
+    # "Autres éléments",
+    #-----------------------------------------------------------
     "Technique",
     "Niveaux de coupes",
     "Site",
@@ -490,7 +530,7 @@ if __name__ == "__main__":
     df = process_text_files_in_directory(directory_path)
     for col in df.select_dtypes(include=['object']).columns: 
         df[col] = df[col].apply(remove_illegal_chars)
-    df['Conclusion'] = df['Conclusion'].apply(sanitize_for_excel)
+    #df['Conclusion'] = df['Conclusion'].apply(sanitize_for_excel)
 
     df.to_excel(".././output/BTB_structurated_raw.xlsx", index=False)
     print(

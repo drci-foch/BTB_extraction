@@ -5,6 +5,8 @@ __pycache__/
 jdk*/
 # C extensions
 *.so
+*.txt
+*.pdf
 lock_*
 # Distribution / packaging
 .Python
