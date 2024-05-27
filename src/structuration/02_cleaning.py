@@ -5,6 +5,17 @@ import re
 
 df = pd.read_excel(".././output/BTB_structurated_raw.xlsx")
 
+
+def clean_nom(text):
+    if pd.isna(text):
+        return None
+    text = str(text)
+    text = text.replace("Destinataire", "")
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+df['Nom'] = df['Nom'].apply(clean_nom)
+
 def clean_infiltrat(text):
     if pd.isna(text):
         return None
