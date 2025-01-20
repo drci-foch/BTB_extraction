@@ -1,5 +1,6 @@
 import pyodbc
 import pandas as pd 
+import os
 
 from lock_parameters import server, database, username, password
 
@@ -32,18 +33,23 @@ query = f"""select p.pat_ipp, d.doc_nom, d.doc_creation_date, d.doc_realisation_
 
 with connection.cursor() as cursor:
     cursor.execute(query)
+    
+    # Create output directory
+    output_dir = "../../data/extract_landscape"
+    os.makedirs(output_dir, exist_ok=True)
+    
     while True:
         row = cursor.fetchone()
         if row is None:
             break
         if row[5] is not None:
-            pat_ipp = row[0]  # Get pat_ipp
-            doc_stockage_id = row[4]  # Get doc_stockage_id (original file name)
-            fil_data = row[5]  # Get file data
-            filename = f"..//..//./data//extract//{pat_ipp}_{doc_stockage_id}.pdf"
+            pat_ipp = row[0]
+            doc_stockage_id = row[4]
+            fil_data = row[5]
+            
+            filename = os.path.join(output_dir, f"{pat_ipp}_{doc_stockage_id}.pdf")
             with open(filename, 'wb') as newfile:
                 newfile.write(fil_data)
-
 
 cursor.close()
 connection.close()

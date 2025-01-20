@@ -36,8 +36,10 @@ def convert_and_save_if_contains_keyword(folder_path, inclusion_keywords, exclus
                 
                 print(f"Copied {filename} into {destination_folder} because it contains the inclusion keyword(s) and not the exclusion keyword.")
 
-folder_path = "../../data/extract/"
+folder_path = "../../data/extract_landscape/"
 inclusion_keywords = ["BIOPSIES TRANSBRONCHIQUES", "BIOPSIE TRANSBRONCHIQUE", "BIOPSIES TRANSBRONCHIQUE", "BIOPSIE TRANSBRONCHIQUES", "BTB", "BIOSPIE TRANSBRONCHIQUE"]
+#inclusion_keywords = ["LAVAGE BRONCHO ALVEOLAIRE", "LAVAGE BRONCHOALVEOLAIRE", "LAVAGE BRONCHO-ALVEOLAIRE", "LBA", "BIOSPIE TRANSBRONCHIQUE"]
+
 exclusion_keywords = ["Annulé"] 
-destination_folder = "../../data/extract_easily_btb/"
+destination_folder = "../../data/extract_landscape_btb/"
 convert_and_save_if_contains_keyword(folder_path, inclusion_keywords, exclusion_keywords, destination_folder)
