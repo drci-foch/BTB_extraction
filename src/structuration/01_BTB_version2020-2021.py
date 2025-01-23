@@ -280,7 +280,7 @@ PATTERNS = [
         "group_index": 2,
     },
 
-    {"field": "Prescripteur", "pattern": r"Docteur\s+([^-,]*?)(?:-|Nom de naissance|,|$)", "group_index": 1},
+    {"field": "Prescripteur", "pattern": r"Docteur\s+([A-Za-zÀ-ÿ\s\.-]+?)(?=(?:,\s*Compte-rendu|\s*\n\s*ADICAP|\s*\n\s*(?:\n\s*)*\d{2}\/\d{2}\/\d{4}))", "group_index": 1},
 
     #---------------------EXTRACTION BTB----------------------
 
