@@ -7,6 +7,10 @@ jdk*/
 *.so
 *.txt
 *.pdf
+*.png
+*.jar 
+*.csv 
+*.docx
 lock_*
 # Distribution / packaging
 .Python

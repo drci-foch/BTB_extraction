@@ -1,578 +1,203 @@
 #TODO : Clean the data like what Natalia asked us to do (Word doc : Processing of BTB data.)
+# Version modifiée selon le compte-rendu réunion Cleaning BTB
 
 import pandas as pd
-import re 
+import re
+from datetime import datetime
 
-df = pd.read_excel(".././output/BTB_structurated_raw.xlsx")
+# Charger les données extraites
+df = pd.read_excel(".././output/BTB_structurated_txt.xlsx")
 
+# Charger les données LUTECE (transplants.csv) pour le NATT
+transplants_df = pd.read_csv("../extraction/transplants.csv", sep=";")
+# Renommer les colonnes pour faciliter la jointure
+transplants_df = transplants_df.rename(columns={"NIP": "IPP_LUTECE", "LT Date": "NATT"})
 
+# ============================================================================
+# 1. DATE DE PRÉLÈVEMENT - Conversion en format date Excel
+# ============================================================================
+def convert_to_date(text):
+    """Convertit une date string DD/MM/YYYY en format datetime pour Excel."""
+    if pd.isna(text):
+        return None
+    text = str(text).strip()
+    # Enlever l'heure si présente (ex: "02/07/2024 09:00:00")
+    text = text.split()[0] if ' ' in text else text
+    try:
+        return pd.to_datetime(text, format="%d/%m/%Y")
+    except (ValueError, TypeError):
+        return None
+
+df['Date de prélèvement'] = df['Date de prélèvement'].apply(convert_to_date)
+
+# ============================================================================
+# 2. NETTOYAGE DU NOM - Supprimer préfixe "Pr" et "Destinataire"
+# ============================================================================
 def clean_nom(text):
+    """Nettoie le nom en supprimant le préfixe Pr et Destinataire."""
     if pd.isna(text):
         return None
     text = str(text)
+    # Supprimer "Destinataire"
     text = text.replace("Destinataire", "")
+    # Supprimer le préfixe "Pr" (avec ou sans espace après)
+    text = re.sub(r'^Pr\s+', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\s+Pr\s+', ' ', text, flags=re.IGNORECASE)
+    text = re.sub(r'\s+Pr$', '', text, flags=re.IGNORECASE)
+    # Nettoyer les espaces multiples
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
 df['Nom'] = df['Nom'].apply(clean_nom)
 
-def clean_infiltrat(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    grade_pattern = re.compile(r'(A(?:\s+)?[0-4]|Ax|A1-)', re.IGNORECASE)
-    match = grade_pattern.search(text)
-    return (match.group(1).upper() if match else text) 
+# ============================================================================
+# 3. SITE - Conserver brut, sans cleaning
+# ============================================================================
+# Ne rien faire sur la colonne Site - on garde les valeurs brutes extraites
 
-df['Infiltrat'] = df['Infiltrat'].apply(clean_infiltrat)
+# ============================================================================
+# 4. VARIABLES - Garder uniquement la version extract (pas de transformation)
+# ============================================================================
+# Les colonnes suivantes sont gardées telles quelles (extraites brutes):
+# - Infiltrat
+# - Bronchiolite Lymphocytaire
+# - Technique
+# - Niveaux de coupes
+# - Nombre de fragment alvéolaire
+# - Bronches/Bronchioles
+# - Inflammation Lymphocytaire
+# - Bronchiolite oblitérante
+# - Fibro-élastose interstitielle
+# - PNN dans les cloisons alvéolaires
+# - Cellules mononucléées
+# - Dilatation des capillaires alvéolaires
+# - Œdème des cloisons alvéolaires
+# - Thrombi fibrineux dans les capillaires alvéolaires
+# - Débris cellulaires dans les cloisons alvéolaires
+# - Epaississement fibreux des cloisons alvéolaires
+# - Hyperplasie pneumocytaire
+# - PNN dans les espaces alvéolaires
+# - Macrophages dans les espaces alvéolaires
+# - Bourgeons conjonctifs dans les espaces alvéolaires
+# - Hématies dans les espaces alvéolaires
+# - Membranes hyalines
+# - Fibrine dans les espaces alvéolaires
+# - Inflammation sous-pleurale, septale, bronchique ou bronchiolaire
+# - BALT
+# - Thrombus fibrino-cruorique
+# - Nécrose ischémique
+# - Inclusions virales
+# - Agent pathogène
+# - Eosinophilie (interstitielle/alvéolaire)
+# - Remodelage vasculaire
+# - Matériel étranger d'inhalation
 
-def clean_bronche(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    grade_pattern = re.compile(r'(B[0-4]|Bx|BX)')
-    match = grade_pattern.search(text)
-    return (match.group(1).upper() if match else None)  
+# ============================================================================
+# 5. GESTION DES DOUBLONS - Garder l'enregistrement le plus récent par Biopsy ID
+# ============================================================================
+# Trier par Biopsy ID et Date de prélèvement (décroissant) pour garder le plus récent
+df_sorted = df.sort_values(by=['Biopsy ID', 'Date de prélèvement'], ascending=[True, False])
+# Supprimer les doublons en gardant le premier (le plus récent)
+df = df_sorted.drop_duplicates(subset=['Biopsy ID'], keep='first')
+print(f"Nombre d'enregistrements après suppression des doublons: {len(df)}")
 
-df['Bronchiolite Lymphocytaire'] = df['Bronchiolite Lymphocytaire'].apply(clean_bronche)
+# ============================================================================
+# 6. AJOUTER NATT DEPUIS LUTECE (transplants.csv)
+# ============================================================================
+# Préparer l'IPP pour la jointure (ajouter le 0 au début si nécessaire)
+df['IPP'] = df['IPP'].astype(str).str.zfill(9)
+transplants_df['IPP_LUTECE'] = transplants_df['IPP_LUTECE'].astype(str).str.zfill(9)
 
+# Convertir NATT en datetime
+transplants_df['NATT'] = pd.to_datetime(transplants_df['NATT'], format="%Y-%m-%d", errors='coerce')
 
-def clean_technique(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    grade_pattern = re.compile(r'HES')
-    match = grade_pattern.search(text)
-    return (match.group().upper() if match else None)  
+# Un patient peut avoir plusieurs NATT (double transplantation)
+# Joindre sur IPP
+df = df.merge(
+    transplants_df[['IPP_LUTECE', 'NATT']].drop_duplicates(),
+    left_on='IPP',
+    right_on='IPP_LUTECE',
+    how='left'
+)
+df = df.drop(columns=['IPP_LUTECE'], errors='ignore')
 
-df['Technique'] = df['Technique'].apply(clean_technique)
+# ============================================================================
+# 7. VÉRIFICATION DATE PRÉLÈVEMENT > NATT
+# ============================================================================
+def check_date_after_natt(row):
+    """Vérifie si la date de prélèvement est postérieure au NATT."""
+    date_prelev = row['Date de prélèvement']
+    natt = row['NATT']
 
+    if pd.isna(date_prelev) or pd.isna(natt):
+        return None  # Pas de vérification possible
 
-def clean_nivcoupes(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    grade_pattern = re.compile(r'\d+')
-    match = grade_pattern.search(text)
-    return (match.group().upper() if match else None)  
-
-df['Niveaux de coupes'] = df['Niveaux de coupes'].apply(clean_nivcoupes)
-
-
-def clean_site(site):
-    if isinstance(site, str):
-        site = site.strip().lower()  # Convert to lowercase and remove leading/trailing spaces
-        
-        # Replace multiple spaces with a single space
-        site = ' '.join(site.split())
-
-        site = site.replace('non precisée', '').replace('non precisé', '').replace('non communiqué', '').replace("#",'').replace('inconnu','')
-        site = site.replace('non prcisée', '').replace('non prcis', '').replace('non prci','').replace("non prci",'').replace('non prcis','').replace('non communiqu', '').replace(".",'').replace('precise','').replace("non",'')
-        site = site.replace('non communique', '').replace('non communiqu', '').replace('np', '').replace("non indiqu", "").replace('non communinqu','').replace('communinqu','').replace('communinq','').replace('indiqu','').replace('*','').replace("nc",'')
-        site = site.replace('prci', '').replace("%",'').replace('btb n','').replace("nelson","").replace("communique","").replace("communiqu","").replace("(","").replace(")","").replace("commubuy","") 
-
-
-        site = site.replace('/', ',').replace('+',',').replace('-',',').replace('et',',')
-        site = re.sub(r'\d+', '', site)
-
-        # Replace abbreviations
-        site = site.replace('lm', 'right middle lobe')
-        site = site.replace('lid', 'right lower lobe')
-        site = site.replace('lim', 'middle lower lobe')
-        site = site.replace('lig', 'left lower lobe')
-        site = site.replace('lsd', 'right upper lobe')
-        site = site.replace('lsg', 'left upper lobe')
-        site = site.replace('lmd', 'right middle lobe')
-        site = site.replace('lingula', ' lingula')
-        site = site.replace('lin ', ' lingula')
-        site = site.replace('lobemoyen', 'right middle lobe')
-        site = site.replace('li ', 'right lower lobe ')
-        site = site.replace(' li ', ' right lower lobe')
-        site = site.replace(',li ', ', right lower lobe ')
-        site = site.replace('li,', 'right lower lobe, ')
-
-        site = site.replace('lobe infrieur gauche', 'left lower lobe')
-        site = site.replace('lobe infrieur', 'right lower lobe')
-        site = site.replace('infrieur gauche', 'left lower lobe')
-        site = site.replace('lobeinfrieurgauche', 'left lower lobe')
-        site = site.replace('lobe infrieur droit', 'right lower lobe')
-        site = site.replace('infrieur droit', 'right lower lobe')
-        site = site.replace('lobeinfrieurdroit', 'right lower lobe')
-        
-        site = site.replace('ld', 'right')
-        site = site.replace('gauche', 'left')
-        site = site.replace('droite', 'right')
-        site = site.replace('droit', 'right')
-        site = site.replace('pyramide basale right', 'right lower lobe ')
-        site = site.replace('pyramide basale left', 'left lower lobe ')
-        site = site.replace('pyramidebasaleleft', 'left lower lobe ')
-        site = site.replace('pyramidebasaleright', 'right lower lobe ')
-
-
-        
-        site = site.replace('pyramidebasale', 'lower lobe ')
-        site = site.replace('pyramidebasale', 'lower lobe ')
-
-
-        if site == '*':
-            site = ''
-        if site == ',':
-            site = ''
-        if len(site) <=1:
-            site=''
-
-
-    return site
-
-
-def process_df_column(column):
-    # Function to process each string value
-    def process_value(value):
-        # Remove characters like ','
-        value = str(value).replace(',', ' ')
-        
-        # Split the value into words to check for 'lobe' and 'lingula'
-        words = value.split()
-        
-        # Process words, add ',' after 'lobe' or 'lingula' if they are not the last word
-        processed_words = []
-        for i, word in enumerate(words):
-            if word in ['lobe', 'lingula'] and i != len(words) - 1:
-                processed_words.append(word + ',')
-            else:
-                processed_words.append(word)
-        
-        # Join the processed words back into a string
-        processed_value = ' '.join(processed_words)
-        
-        # Trim spaces around ','
-        processed_value = ', '.join(segment.strip() for segment in processed_value.split(','))
-        
-        return processed_value
-
-    # Apply the processing function to each value in the column
-    return column.apply(process_value)
-    
-
-df['Site'] = df['Site'].apply(clean_site)
-df["Site"] = process_df_column(df['Site'])
-df['Site'] = df['Site'].str.replace("nan", "", regex=False)
-df['Site'] = df['Site'].str.strip()
-site_value_counts = df['Site'].value_counts()
-site_value_counts.to_csv("value_counts.txt")
-
-
-def clean_fragmentalveo(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    grade_pattern = re.compile(r'\d+')
-    match = grade_pattern.search(text)
-    return (match.group().upper() if match else text)  
-
-df['Nombre de fragment alvéolaire'] = df['Nombre de fragment alvéolaire'].apply(clean_fragmentalveo)
-
-def clean_bronche(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    grade_pattern = re.compile(r'\d+')
-    match = grade_pattern.search(text)
-    return (match.group().upper() if match else text)  
-
-df['Bronches/Bronchioles'] = df['Bronches/Bronchioles'].apply(clean_bronche)
-
-
-def standardize_values_inflammation_lymphocy(val):
-    if pd.isna(val):
-        return None
-    val = str(val)  # Ensure the value is a string
-    if val.lower() in ["non", "nonn", "nonl","rejet"]:
-        return "Non"
-    elif val.lower() in ["oui"]:
-        return "Oui"
-    elif val == "0":
-        # Assuming "0" means "Non"; adjust based on actual meaning/context
-        return "Non"
+    if date_prelev > natt:
+        return "OK"
     else:
-        # Return the value as is for specific conditions or statuses
-        return val
-df['Inflammation Lymphocytaire'] = df['Inflammation Lymphocytaire'].apply(standardize_values_inflammation_lymphocy)
+        return "ALERTE: Date prélèvement <= NATT"
 
-def standardize_values_brochioliobli(val):
-    if pd.isna(val):
+df['Verif_Date_NATT'] = df.apply(check_date_after_natt, axis=1)
+
+# ============================================================================
+# 8. VÉRIFICATION PATIENTS LUTECE
+# ============================================================================
+# Liste des patients LUTECE (tous les NIP du fichier transplants.csv)
+patients_lutece = set(transplants_df['IPP_LUTECE'].astype(str).str.zfill(9).unique())
+patients_btb = set(df['IPP'].unique())
+
+# Vérifier si chaque patient BTB est dans LUTECE
+df['Patient_dans_LUTECE'] = df['IPP'].apply(lambda x: "Oui" if x in patients_lutece else "Non")
+
+# Identifier les patients LUTECE non présents dans BTB
+patients_lutece_manquants = patients_lutece - patients_btb
+print(f"Patients LUTECE non trouvés dans BTB: {len(patients_lutece_manquants)}")
+
+# ============================================================================
+# 9. VÉRIFICATION DU NOMBRE DE BIOPSIES PAR PATIENT (9 attendues)
+# ============================================================================
+biopsies_par_patient = df.groupby('IPP').size().reset_index(name='Nb_Biopsies')
+df = df.merge(biopsies_par_patient, on='IPP', how='left')
+
+def check_biopsies_count(nb_biopsies):
+    """Vérifie si le patient a le bon nombre de biopsies (9 attendues)."""
+    if pd.isna(nb_biopsies):
         return None
-    val = str(val)  
-    if val.lower() in ["0", "n"]:
-        return "0"
-    elif val.lower() in ["p","o"]:
-        return "1"
-
+    nb = int(nb_biopsies)
+    if nb >= 9:
+        return "OK"
     else:
-        return ""
+        return f"ALERTE: {nb} biopsies (< 9 attendues)"
 
+df['Verif_Nb_Biopsies'] = df['Nb_Biopsies'].apply(check_biopsies_count)
 
-df['Bronchiolite oblitérante'] = df['Bronchiolite oblitérante'].apply(standardize_values_brochioliobli)
+# ============================================================================
+# 10. COLONNES DE VÉRIFICATION RÉCAPITULATIVES
+# ============================================================================
+# Créer une colonne récapitulative des alertes
+def recap_verifications(row):
+    """Récapitule toutes les vérifications pour faciliter le filtrage."""
+    alertes = []
 
-def standardize_values_fibroelastoseinters(val):
-    if pd.isna(val):
-        return None
-    val = str(val)  
-    if val.lower() in ["0", "non"]:
-        return "0"
-    elif val.lower() in ["1","atteinte"]:
-        return "1"
+    if row.get('Verif_Date_NATT') and "ALERTE" in str(row.get('Verif_Date_NATT', '')):
+        alertes.append("Date/NATT")
 
-    else:
-        return ""
-    
-df['Fibro-élastose interstitielle'] = df['Fibro-élastose interstitielle'].apply(standardize_values_fibroelastoseinters)
+    if row.get('Patient_dans_LUTECE') == "Non":
+        alertes.append("Patient non LUTECE")
 
-def clean_pnnca(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    # This pattern matches one or more '+' signs, or specific keywords
-    grade_pattern = re.compile(r'(\++)|(focal+)|(rare+)|(quelque+)', re.IGNORECASE)
-    match = grade_pattern.search(text)
-    if match:
-        if match.group(1):  # If the match is for '+' signs
-            return str(len(match.group(1)))  # Return the count of '+' signs
-        else:
-            return "1"  # For 'focal', 'rare', 'quelque', return "1"
-    else:
-        return "0"
+    if row.get('Verif_Nb_Biopsies') and "ALERTE" in str(row.get('Verif_Nb_Biopsies', '')):
+        alertes.append("Nb biopsies")
 
-df['PNN dans les cloisons alvéolaires'] = df['PNN dans les cloisons alvéolaires'].apply(clean_pnnca)
+    return "; ".join(alertes) if alertes else "OK"
 
+df['Alertes_Recap'] = df.apply(recap_verifications, axis=1)
 
-def clean_cellulemono(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    # This pattern matches one or more '+' signs, or specific keywords
-    grade_pattern = re.compile(r'(\++)|(focal+)|(rare+)|(quelque+)', re.IGNORECASE)
-    match = grade_pattern.search(text)
-    if match:
-        if match.group(1):  # If the match is for '+' signs
-            return str(len(match.group(1)))  # Return the count of '+' signs
-        else:
-            return "1"  # For 'focal', 'rare', 'quelque', return "1"
-    else:
-        return "0"
-
-
-df['Cellules mononucléées'] = df['Cellules mononucléées'].apply(clean_cellulemono)
-
-def clean_dilatation(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    # This pattern matches one or more '+' signs, or specific keywords
-    grade_pattern = re.compile(r'(\++)|(focal+)|(rare+)|(quelque+)', re.IGNORECASE)
-    match = grade_pattern.search(text)
-    if match:
-        if match.group(1):  # If the match is for '+' signs
-            return str(len(match.group(1)))  # Return the count of '+' signs
-        else:
-            return "1"  # For 'focal', 'rare', 'quelque', return "1"
-    else:
-        return "0"
-
-df['Dilatation des capillaires alvéolaires'] = df['Dilatation des capillaires alvéolaires'].apply(clean_dilatation)
-
-
-def clean_oedeme(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    # This pattern matches one or more '+' signs, or specific keywords
-    grade_pattern = re.compile(r'(\++)|(focal+)|(rare+)|(quelque+)', re.IGNORECASE)
-    match = grade_pattern.search(text)
-    if match:
-        if match.group(1):  # If the match is for '+' signs
-            return str(len(match.group(1)))  # Return the count of '+' signs
-        else:
-            return "1"  # For 'focal', 'rare', 'quelque', return "1"
-    else:
-        return "0"
-
-df['Œdème des cloisons alvéolaires'] = df['Œdème des cloisons alvéolaires'].apply(clean_oedeme)
-
-def clean_thrombi(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    # This pattern matches one or more '+' signs, or specific keywords
-    grade_pattern = re.compile(r'(\++)|(focal+)|(rare+)|(quelque+)', re.IGNORECASE)
-    match = grade_pattern.search(text)
-    if match:
-        if match.group(1):  # If the match is for '+' signs
-            return str(len(match.group(1)))  # Return the count of '+' signs
-        else:
-            return "1"  # For 'focal', 'rare', 'quelque', return "1"
-    else:
-        return "0"
-df['Thrombi fibrineux dans les capillaires alvéolaires'] = df['Thrombi fibrineux dans les capillaires alvéolaires'].apply(clean_thrombi)
-
-def clean_debri(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    # This pattern matches one or more '+' signs, or specific keywords
-    grade_pattern = re.compile(r'(\++)|(focal+)|(rare+)|(quelque+)', re.IGNORECASE)
-    match = grade_pattern.search(text)
-    if match:
-        if match.group(1):  # If the match is for '+' signs
-            return str(len(match.group(1)))  # Return the count of '+' signs
-        else:
-            return "1"  # For 'focal', 'rare', 'quelque', return "1"
-    else:
-        return "0"
-
-
-df['Débris cellulaires dans les cloisons alvéolaires'] = df['Débris cellulaires dans les cloisons alvéolaires'].apply(clean_debri)
-
-
-def clean_epaiss(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    # This pattern matches one or more '+' signs, or specific keywords
-    grade_pattern = re.compile(r'(\++(?:\S+)?(?:\w+)?|focal+|discr+|lger+|leger+|atteinte+)', re.IGNORECASE)
-    match = grade_pattern.search(text)
-    if match:
-        if match.group(1):  # If the match is for '+' signs
-            return str(len(match.group(1)))  # Return the count of '+' signs
-        else:
-            return "1"  # For 'focal', 'rare', 'quelque', return "1"
-    else:
-        return "0"
-
-df['Epaississement fibreux des cloisons alvéolaires'] = df['Epaississement fibreux des cloisons alvéolaires'].apply(clean_epaiss)
-
-
-def clean_hyperplasie(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    # This pattern matches one or more '+' signs, or specific keywords
-    grade_pattern = re.compile(r'(\++(?:\S+)?(?:\w+)?|focal+|discr+|lger+|leger+|atteinte+)', re.IGNORECASE)
-    match = grade_pattern.search(text)
-    if match:
-        if match.group(1):  # If the match is for '+' signs
-            return str(len(match.group(1)))  # Return the count of '+' signs
-        else:
-            return "1"  # For 'focal', 'rare', 'quelque', return "1"
-    else:
-        return "0"
-
-df['Hyperplasie pneumocytaire'] = df['Hyperplasie pneumocytaire'].apply(clean_hyperplasie)
-
-def clean_pnnespace(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    # This pattern matches one or more '+' signs, or specific keywords
-    grade_pattern = re.compile(r'(\++(?:\S+)?(?:\w+)?|focal+|discr+|rare+|prsence+|quelque+)', re.IGNORECASE)
-    match = grade_pattern.search(text)
-    if match:
-        if match.group(1):  # If the match is for '+' signs
-            return str(len(match.group(1)))  # Return the count of '+' signs
-        else:
-            return "1"  # For 'focal', 'rare', 'quelque', return "1"
-    else:
-        return "0"
- 
-df['PNN dans les espaces alvéolaires'] = df['PNN dans les espaces alvéolaires'].apply(clean_pnnespace)
-
-def clean_macrophage(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    # This pattern matches one or more '+' signs, or specific keywords
-    grade_pattern = re.compile(r'(\++(?:\S+)?(?:\w+)?|focal+|discr+|rare+|prsence+|quelque+)', re.IGNORECASE)
-    match = grade_pattern.search(text)
-    if match:
-        if match.group(1):  # If the match is for '+' signs
-            return str(len(match.group(1)))  # Return the count of '+' signs
-        else:
-            return "1"  # For 'focal', 'rare', 'quelque', return "1"
-    else:
-        return "0" 
-df['Macrophages dans les espaces alvéolaires'] = df['Macrophages dans les espaces alvéolaires'].apply(clean_macrophage)
-
-
-def clean_bourgeons(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    # This pattern matches one or more '+' signs, or specific keywords
-    grade_pattern = re.compile(r'(\++(?:\S+)?(?:\w+)?|focal+|discr+|rare+|prsence+|quelque+|bauches+|petite+)', re.IGNORECASE)
-    match = grade_pattern.search(text)
-    if match:
-        if match.group(1):  # If the match is for '+' signs
-            return str(len(match.group(1)))  # Return the count of '+' signs
-        else:
-            return "1"  # For 'focal', 'rare', 'quelque', return "1"
-    else:
-        return "0"
-
-df['Bourgeons conjonctifs dans les espaces alvéolaires'] = df['Bourgeons conjonctifs dans les espaces alvéolaires'].apply(clean_bourgeons)
-
-def clean_hemati(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    # This pattern matches one or more '+' signs, or specific keywords
-    grade_pattern = re.compile(r'(\++(?:\S+)?(?:\w+)?|focal+|discr+|rare+|prsence+|quelque+|bauches+|petite+)', re.IGNORECASE)
-    match = grade_pattern.search(text)
-    if match:
-        if match.group(1):  # If the match is for '+' signs
-            return str(len(match.group(1)))  # Return the count of '+' signs
-        else:
-            return "1"  # For 'focal', 'rare', 'quelque', return "1"
-    else:
-        return "0"
-
-df['Hématies dans les espaces alvéolaires'] = df['Hématies dans les espaces alvéolaires'].apply(clean_hemati)
-
-def clean_membrane(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    # This pattern matches one or more '+' signs, or specific keywords
-    grade_pattern = re.compile(r'(\++(?:\S+)?(?:\w+)?|focal+|discr+|rare+|prsence+|quelque+|bauches+|petite+)', re.IGNORECASE)
-    match = grade_pattern.search(text)
-    if match:
-        if match.group(1):  # If the match is for '+' signs
-            return str(len(match.group(1)))  # Return the count of '+' signs
-        else:
-            return "1"  # For 'focal', 'rare', 'quelque', return "1"
-    else:
-        return "0"
-    
-df['Membranes hyalines'] = df['Membranes hyalines'].apply(clean_membrane)
-
-def clean_fibrine(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    # This pattern matches one or more '+' signs, or specific keywords
-    grade_pattern = re.compile(r'(\++(?:\S+)?(?:\w+)?|focal+|discr+|rare+|prsence+|quelque+|bauches+|petite+)', re.IGNORECASE)
-    match = grade_pattern.search(text)
-    if match:
-        if match.group(1):  # If the match is for '+' signs
-            return str(len(match.group(1)))  # Return the count of '+' signs
-        else:
-            return "1"  # For 'focal', 'rare', 'quelque', return "1"
-    else:
-        return "0"
-df['Fibrine dans les espaces alvéolaires'] = df['Fibrine dans les espaces alvéolaires'].apply(clean_fibrine)
-
-def clean_inflammation(text):
-
-    text = str(text)
-    if len(text)<=1:
-        return ""
-    # This pattern matches one or more '+' signs, or specific keywords
-    grade_pattern = re.compile(r'(\++(?:\S+)?(?:\w+)?|focal+|discr+|rare+|prsence+|quelque+|minim+|petite+)', re.IGNORECASE)
-    match = grade_pattern.search(text)
-    if match:
-        if match.group(1):  # If the match is for '+' signs
-            return str(len(match.group(1)))  # Return the count of '+' signs
-        else:
-            return "1"  # For 'focal', 'rare', 'quelque', return "1"
-    else:
-        return "0"
-df['Inflammation sous-pleurale, septale, bronchique ou bronchiolaire'] = df['Inflammation sous-pleurale, septale, bronchique ou bronchiolaire'].apply(clean_inflammation)
-
-
-def clean_BALT(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    grade_pattern = re.compile(r'(\++|oui+|pres+)', re.IGNORECASE)    
-    match = grade_pattern.search(text)
-    if match:
-        return "1"
-    else:
-        return "0"
-
-
-df['BALT'] = df['BALT'].apply(clean_BALT)
-
-def clean_thrombusfibrino(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    grade_pattern = re.compile(r'(\++|oui+|pres+|1|2|prs+)', re.IGNORECASE)    
-    match = grade_pattern.search(text)
-    if match:
-        return "1"
-    else:
-        return "0"
-
-
-df['Thrombus fibrino-cruorique'] = df['Thrombus fibrino-cruorique'].apply(clean_thrombusfibrino)
-
-def clean_necrose(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    grade_pattern = re.compile(r'(\++|oui+|pres+|1|2|prs+)', re.IGNORECASE)    
-    match = grade_pattern.search(text)
-    if match:
-        return "1"
-    else:
-        return "0"
-
-
-df['Nécrose ischémique'] = df['Nécrose ischémique'].apply(clean_necrose)
-
-def clean_inclusionvirale(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    grade_pattern = re.compile(r'(\++|oui+|pres+|1|2|prs+)', re.IGNORECASE)    
-    match = grade_pattern.search(text)
-    if match:
-        return "1"
-    else:
-        return "0"
-
-
-df['Inclusions virales'] = df['Inclusions virales'].apply(clean_inclusionvirale)
-
-def clean_agentpath(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    grade_pattern = re.compile(r'(\++|oui+|pres+|1|2|prs+)', re.IGNORECASE)    
-    match = grade_pattern.search(text)
-    if match:
-        return "1"
-    else:
-        return "0"
-
-
-df['Agent pathogène'] = df['Agent pathogène'].apply(clean_agentpath)
-
-def clean_esino(text):
-    if pd.isna(text):
-        return None
-    text = str(text)
-    grade_pattern = re.compile(r'(\++|oui+|pres+|1|2|prs+|poss+|pren+)', re.IGNORECASE)    
-    match = grade_pattern.search(text)
-    if match:
-        return "1"
-    else:
-        return "0"
-
-
-df['Eosinophilie (interstitielle/alvéolaire)'] = df['Eosinophilie (interstitielle/alvéolaire)'].apply(clean_agentpath)
-df['Remodelage vasculaire'] = df['Remodelage vasculaire'].apply(clean_agentpath)
-df['Matériel étranger d’inhalation'] = df['Matériel étranger d’inhalation'].apply(clean_agentpath)
-df['IPP'] = "0" + df['IPP'].astype(str)
-
+# ============================================================================
+# EXPORT
+# ============================================================================
+# S'assurer que les dates sont bien formatées pour Excel
 df.to_excel('../output/BTB_structurated_cleaned.xlsx', index=False)
+
+print("Export terminé: BTB_structurated_cleaned.xlsx")
+print(f"Nombre total d'enregistrements: {len(df)}")
+print(f"Nombre d'alertes: {len(df[df['Alertes_Recap'] != 'OK'])}")

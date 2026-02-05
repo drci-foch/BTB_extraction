@@ -2,6 +2,7 @@ import argparse
 import os
 import re
 import warnings
+from datetime import datetime
 
 import pandas as pd
 
@@ -89,8 +90,8 @@ def extract_technique(text, option="lba"):
 
 def extract_niveaux_coupes(text):
     """
-    Extracts the levels of cuts (niveaux de coupes) from a given text, reusing the patterns defined for extracting
-    techniques. It specifically looks for the group right after a semi-colon that follows the technique pattern.
+    Extracts the levels of cuts (niveaux de coupes) from a given text.
+    Specifically looks for patterns like "X niveaux de coupes" after technique specification.
 
     Parameters:
     - text (str): The text from which the levels of cuts are to be extracted.
@@ -98,12 +99,23 @@ def extract_niveaux_coupes(text):
     Returns:
     - str or None: The extracted levels of cuts if found, otherwise None.
     """
-    # Most found pattern
+    # Pattern direct: chercher "X niveaux de coupes" après "Technique : HES ;"
+    direct_pattern = r"Technique\s*:\s*HES\s*;\s*(\d+)\s*niveaux?\s*de\s*coupes?"
+    direct_match = re.search(direct_pattern, text, re.IGNORECASE)
+    if direct_match:
+        return direct_match.group(1).strip()
+
+    # Pattern alternatif: chercher juste "X niveaux de coupes" n'importe où
+    alt_pattern = r"(\d+)\s*niveaux?\s*de\s*coupes?"
+    alt_match = re.search(alt_pattern, text, re.IGNORECASE)
+    if alt_match:
+        return alt_match.group(1).strip()
+
+    # Most found pattern (ancien pattern)
     pattern = r"(2\.|II\.|I\.|2/|2°/)[\s+]*(Biopsies\s+trans[ -]*bronchiques|Biopsies\s+transbronchiques|Biospies\s+transbronchiques|BTB)[\s\S+]*?Technique\s*:\s*([^;]+);\s*([^n]+)"
     match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
     if match:
         return match.group(4).strip()
-
 
     # Sometimes, there isn't the numbers, only "Biopsie" in text etc..
     fallback_pattern = r"(Biopsies\s+trans[ -]*bronchiques|Biopsies\s+transbronchiques|Biospies\s+transbronchiques|BTB)(?:(?!LAVAGE)[\s\S])*?Technique\s*:\s*([^;]+);\s*([^n]+)"
@@ -133,6 +145,76 @@ def extract_niveaux_coupes(text):
     if last_fallback_match:
         return last_fallback_match.group(2).strip()
 
+    return None
+
+
+def detect_modele_btb(text, date_prelevement=None):
+    """
+    Détecte si le document BTB est en texte libre ou semi-structuré.
+
+    Critères:
+    - Avant 2011: considéré comme texte libre
+    - Présence de champs structurés (Site:, Infiltrat:, etc.): semi-structuré
+
+    Parameters:
+    - text (str): Le contenu du document BTB
+    - date_prelevement (str): La date de prélèvement au format DD/MM/YYYY
+
+    Returns:
+    - str: "texte_libre" ou "semi_structure"
+    """
+    # Vérifier la date de prélèvement
+    if date_prelevement:
+        try:
+            # Essayer de parser la date
+            if isinstance(date_prelevement, str):
+                date_obj = datetime.strptime(date_prelevement, "%d/%m/%Y")
+                if date_obj.year < 2011:
+                    return "texte_libre"
+        except (ValueError, TypeError):
+            pass
+
+    # Chercher des patterns de champs structurés typiques du format semi-structuré
+    structured_patterns = [
+        r"Site\s*:",
+        r"Infiltrat\s*mononucléé",
+        r"Bronchiolite\s*lymphocytaire",
+        r"Nombre\s*de\s*fragments?\s*alvéolaires?",
+        r"Rejet\s*cellulaire\s*:",
+        r"Rejet\s*chronique\s*:",
+        r"Atteinte\s*du\s*compartiment",
+        r"PNN\s*dans\s*les\s*cloisons",
+        r"Bronchiolite\s*oblitérante\s*\(",
+    ]
+
+    structured_count = 0
+    for pattern in structured_patterns:
+        if re.search(pattern, text, re.IGNORECASE):
+            structured_count += 1
+
+    # Si au moins 3 patterns structurés sont trouvés, c'est semi-structuré
+    if structured_count >= 3:
+        return "semi_structure"
+
+    return "texte_libre"
+
+
+def extract_texte_libre_complet(text, modele_btb):
+    """
+    Si le document est en texte libre, retourne l'intégralité du texte.
+
+    Parameters:
+    - text (str): Le contenu du document BTB
+    - modele_btb (str): Le type de modèle ("texte_libre" ou "semi_structure")
+
+    Returns:
+    - str or None: Le texte complet si texte libre, None sinon
+    """
+    if modele_btb == "texte_libre":
+        # Nettoyer les espaces excessifs mais garder la structure
+        cleaned_text = re.sub(r'[ \t]+', ' ', text)
+        cleaned_text = re.sub(r'\n\s*\n', '\n\n', cleaned_text)
+        return cleaned_text.strip()
     return None
 
 
@@ -208,12 +290,12 @@ def process_text_files_in_directory(directory_path):
             print("Début du texte:", text[:200].replace('\n', '\\n'))  # Debug
 
             # Debug - cherchons les patterns manuellement
-            biopsy_pattern = r"(?:^|\n)[\s\xa0]*N°[\s\xa0]*P[\s\xa0]*(\d+\.?\d*)"
+            biopsy_pattern = r"(?:^|\n)[\s\xa0]*N°[\s\xa0]*(?:de\s*demande\s*:\s*|P[\s\xa0]*)([.\w-]+)"
             date_pattern = r"Prélevé[\s\xa0]*le[\s\xa0]*:[\s\xa0]*(\d{2}/\d{2}/\d{4})"
-            
+
             biopsy_match = re.search(biopsy_pattern, text, re.DOTALL | re.IGNORECASE)
             date_match = re.search(date_pattern, text, re.DOTALL | re.IGNORECASE)
-            
+
             print(f"\nFichier: {filename}")
             print(f"Biopsy match: {biopsy_match.group(1) if biopsy_match else None}")
             print(f"Date match: {date_match.group(1) if date_match else None}")
@@ -223,6 +305,17 @@ def process_text_files_in_directory(directory_path):
             info["Prénom"] = extract_prenom_before_docteur(text)
             info["Filename"] = filename
             info["IPP"] = filename.split("_")[0]
+
+            # Extraction améliorée du niveau de coupes
+            info["Niveaux de coupes"] = extract_niveaux_coupes(text)
+
+            # Détection du modèle BTB (texte libre vs semi-structuré)
+            date_prelevement = info.get("Date de prélèvement")
+            info["Modele_BTB"] = detect_modele_btb(text, date_prelevement)
+
+            # Si texte libre, conserver le texte complet
+            info["Texte_libre_complet"] = extract_texte_libre_complet(text, info["Modele_BTB"])
+
             data.append(info)
 
     if data:
@@ -287,163 +380,163 @@ PATTERNS = [
     # Technique -> Trop particulier, on a la propre fonction
     # Niveau de coupes -> De même
 
-    # {"field": "Site",
-    #     "pattern": r"(Site[\s\xa0]*:)([\S]*[^\n]+)", "group_index": 2},
-    # {
-    #     "field": "Nombre de fragment alvéolaire",
-    #     "pattern": r"(Nombre[\s\xa0]*de[\s\xa0]*fragments[\s\xa0]*alvéolaires[\s\xa0]*:|Nombre[\s\xa0]*de[\s\xa0]*fragments[\s\xa0]*de[\s\xa0]*tissu(s)?[\s\xa0]*alvéolaire(s)?[\s\xa0]*:)([\S]*[^\n]+)",
-    #     "group_index": 4,
-    # },
-    # {
-    #     "field": "Bronches/Bronchioles",
-    #     "pattern": r"(Bronches\/Bronchioles[\s\xa0]*:[\s\xa0]*|Bronches[\s\xa0]*\/[\s\xa0]*Bronchioles[\s\xa0]*:[\s\xa0]*)([\S]*[^\n]+)",
-    #     "group_index": 2,
-    # },
-    # {
-    #     "field": "Infiltrat",
-    #     "pattern": r"(Infiltrat[\s\xa0]*mononucléé[\s\xa0]*péri(?:-|\s*)?vasculaire[\s\xa0]*\(A0[\s\xa0]*à[\s\xa0]*A4[\s\xa0]*\/[\s\xa0]*AX\)[\s\xa0]*:*:[\s\xa0]*|Infiltrat[\s\xa0]*mononucléé[\s\xa0]*péri(?:-|\s*)?vasculaire[\s\xa0]*\(A[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n]+)",
-    #     "group_index": 2,
-    # },
-    # {
-    #     "field": "Bronchiolite Lymphocytaire",
-    #     "pattern": r"(Bronchiolite[\s\xa0]*lymphocytaire[\s\xa0]*\(B0[\s\xa0]*\/[\s\xa0]*1R[\s\xa0]*\/[\s\xa0]*2R[\s\xa0]*\/[\s\xa0]*BX\)[\s\xa0]*:*:[\s\xa0]*|Bronchiolite[\s\xa0]*lymphocytaire[\s\xa0]*\(B[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\w]*)",
-    #     "group_index": 2,
-    # },
-    # {
-    #     "field": "Inflammation Lymphocytaire",
-    #     "pattern": r"(Inflammation[\s\xa0]*lymphocytaire[\s\xa0]*bronchique[\s\xa0]*\([\s\xa0]*oui[\s\xa0]*\/[\s\xa0]*non[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\w]*)",
-    #     "group_index": 2,
-    # },
-    # {
-    #     "field": "Bronchiolite oblitérante",
-    #     "pattern": r"Bronchiolite[\s\xa0]*(oblitérante|constrictive)(?:[\s\xa0]*\((0[\s\xa0]*ou[\s\xa0]*1)\))?[\s\xa0]*:[\s\xa0]*(\w)",
-    #     "group_index": 3,
-    # },
-    # {
-    #     "field": "Fibro-élastose interstitielle",
-    #     "pattern": r"(Fibro(?:-|\s*)?élastose[\s\xa0]*interstitielle [\s\xa0]*\([\s\xa0]*0[\s\xa0]*ou[\s\xa0]*1[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\w]*)",
-    #     "group_index": 2,
-    # },
-    # {
-    #     "field": "PNN dans les cloisons alvéolaires",
-    #     "pattern": r"((PNN[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*capillaires[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*|PNN[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*cloisons[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([^\n]+))",
-    #     "group_index": 3,
-    # },
-    # {
-    #     "field": "Cellules mononucléées",
-    #     "pattern": r"(Cellules[\s\xa0]*mononucléées[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*capillaires[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*|Cellules[\s\xa0]*mononuclées[\s\xa0]*\(lymphocytes[\s\xa0]*ou[\s\xa0]*macrophages[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*cloisons[\s\xa0]*alvéolaires\)[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n]+)",
-    #     "group_index": 2,
-    # },
-    # {
-    #     "field": "Dilatation des capillaires alvéolaires",
-    #     "pattern": r"(Dilatation[\s\xa0]*des[\s\xa0]*capillaires[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n]+)",
-    #     "group_index": 2,
-    # },
-    # {
-    #     "field": "Œdème des cloisons alvéolaires",
-    #     "pattern": r"((Œdème|Oedème)[\s\xa0]*des[\s\xa0]*cloisons[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
-    #     "group_index": 3,
-    # },
-    # {
-    #     "field": "Thrombi fibrineux dans les capillaires alvéolaires",
-    #     "pattern": r"(Thrombi[\s\xa0]*fibrineux[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*capillaires[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
-    #     "group_index": 2,
-    # },
-    # {
-    #     "field": "Débris cellulaires dans les cloisons alvéolaires",
-    #     "pattern": r"(Débris[\s\xa0]*cellulaires[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*cloisons[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
-    #     "group_index": 2,
-    # },
-    # {
-    #     "field": "Epaississement fibreux des cloisons alvéolaires",
-    #     "pattern": r"(Epaississement[\s\xa0]*fibreux[\s\xa0]*des[\s\xa0]*cloisons[\s\xa0]*alvéolaires[\s\xa0]*(?:\w*)?\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
-    #     "group_index": 2,
-    # },
-    # {
-    #     "field": "Hyperplasie pneumocytaire",
-    #     "pattern": r"(Hyperplasie[\s\xa0]*pneumocytaire[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
-    #     "group_index": 2,
-    # },
-    # {
-    #     "field": "PNN dans les espaces alvéolaires",
-    #     "pattern": r"(PNN[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*espaces[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*|PNN[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*espaces[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([^\n]+)",
-    #     "group_index": 2,
-    # },
-    # {
-    #     "field": "Macrophages dans les espaces alvéolaires",
-    #     "pattern": r"(Macrophages[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*espaces[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
-    #     "group_index": 2,
-    # },
-    # {
-    #     "field": "Bourgeons conjonctifs dans les espaces alvéolaires",
-    #     "pattern": r"(Bourgeons[\s\xa0]*conjonctifs[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*espaces[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
-    #     "group_index": 2,
-    # },
-    # {
-    #     "field": "Hématies dans les espaces alvéolaires",
-    #     "pattern": r"(Hématies[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*espaces[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
-    #     "group_index": 2,
-    # },
-    # {
-    #     "field": "Membranes hyalines",
-    #     "pattern": r"(Membranes[\s\xa0]*hyalines[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
-    #     "group_index": 2,
-    # },
-    # {
-    #     "field": "Fibrine dans les espaces alvéolaires",
-    #     "pattern": r"(Fibrine[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*espaces[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
-    #     "group_index": 2,
-    # },
-    # {
-    #     "field": "Inflammation sous-pleurale, septale, bronchique ou bronchiolaire",
-    #     "pattern": r"(Inflammation[\s\xa0]*sous(\-|[\s\xa0])?pleurale,[\s\xa0]*septale,[\s\xa0]*bronchique[\s\xa0]*ou[\s\xa0]*bronchiolaire[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
-    #     "group_index": 3,
-    # },
-    # {
-    #     "field": "BALT",
-    #     "pattern": r"(BALT[\s\xa0]*\(oui\/non\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
-    #     "group_index": 2,
-    # },
-    # {
-    #     "field": "Thrombus fibrino-cruorique",
-    #     "pattern": r"(Thrombus[\s\xa0]*fibrino(\-|[\s\xa0]|)?cruorique[\s\xa0]*(\(oui\/non\)|)?[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
-    #     "group_index": 4,
-    # },
-    # {
-    #     "field": "Nécrose ischémique",
-    #     "pattern": r"(Nécrose[\s\xa0]*ischémique[\s\xa0]*(\(oui\/non\)|)?[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
-    #     "group_index": 3,
-    # },
-    # {
-    #     "field": "Inclusions virales",
-    #     "pattern": r"(Inclusions[\s\xa0]*virales[\s\xa0]*(\(oui\/non\)|)?[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
-    #     "group_index": 3,
-    # },
-    # {
-    #     "field": "Agent pathogène",
-    #     "pattern": r"(Agent[\s\xa0]*pathogène[\s\xa0]*(\(oui\/non\)|)?[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
-    #     "group_index": 3,
-    # },
-    # {
-    #     "field": "Eosinophilie (interstitielle/alvéolaire)",
-    #     "pattern": r"(Eosinophilie[\s\xa0]*(\(interstitielle\/alvéolaire\)|)?[\s\xa0]*(\(oui\/non\)|)?[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
-    #     "group_index": 4,
-    # },
-    # {
-    #     "field": "Remodelage vasculaire",
-    #     "pattern": r"(Remodelage[\s\xa0]*vasculaire[\s\xa0]*[\s\xa0]*(\(oui\/non\)|)?[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
-    #     "group_index": 3,
-    # },
-    # {
-    #     "field": "Matériel étranger d’inhalation",
-    #     "pattern": r"(Matériel[\s\xa0]*étranger[\s\xa0]*d’inhalation[\s\xa0]*(\(oui\/non\)|)?[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
-    #     "group_index": 3,
-    # },
-    # {
-    #     "field": "Conclusion",
-    #     "pattern": r"((Conclusion|C[\s\xa0]O[\s\xa0]N[\s\xa0]C[\s\xa0]L[\s\xa0]U[\s\xa0]S[\s\xa0]I[\s\xa0]O[\s\xa0]N)[\s\xa0]*(:.*|))([\s\S]*)",
-    #     "group_index": 4,
-    # },
+    {"field": "Site",
+        "pattern": r"(Site[\s\xa0]*:)([\S]*[^\n]+)", "group_index": 2},
+    {
+        "field": "Nombre de fragment alvéolaire",
+        "pattern": r"(Nombre[\s\xa0]*de[\s\xa0]*fragments[\s\xa0]*alvéolaires[\s\xa0]*:|Nombre[\s\xa0]*de[\s\xa0]*fragments[\s\xa0]*de[\s\xa0]*tissu(s)?[\s\xa0]*alvéolaire(s)?[\s\xa0]*:)([\S]*[^\n]+)",
+        "group_index": 4,
+    },
+    {
+        "field": "Bronches/Bronchioles",
+        "pattern": r"(Bronches\/Bronchioles[\s\xa0]*:[\s\xa0]*|Bronches[\s\xa0]*\/[\s\xa0]*Bronchioles[\s\xa0]*:[\s\xa0]*)([\S]*[^\n]+)",
+        "group_index": 2,
+    },
+    {
+        "field": "Infiltrat",
+        "pattern": r"(Infiltrat[\s\xa0]*mononucléé[\s\xa0]*péri(?:-|\s*)?vasculaire[\s\xa0]*\(A0[\s\xa0]*à[\s\xa0]*A4[\s\xa0]*\/[\s\xa0]*AX\)[\s\xa0]*:*:[\s\xa0]*|Infiltrat[\s\xa0]*mononucléé[\s\xa0]*péri(?:-|\s*)?vasculaire[\s\xa0]*\(A[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n]+)",
+        "group_index": 2,
+    },
+    {
+        "field": "Bronchiolite Lymphocytaire",
+        "pattern": r"(Bronchiolite[\s\xa0]*lymphocytaire[\s\xa0]*\(B0[\s\xa0]*\/[\s\xa0]*1R[\s\xa0]*\/[\s\xa0]*2R[\s\xa0]*\/[\s\xa0]*BX\)[\s\xa0]*:*:[\s\xa0]*|Bronchiolite[\s\xa0]*lymphocytaire[\s\xa0]*\(B[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\w]*)",
+        "group_index": 2,
+    },
+    {
+        "field": "Inflammation Lymphocytaire",
+        "pattern": r"(Inflammation[\s\xa0]*lymphocytaire[\s\xa0]*bronchique[\s\xa0]*\([\s\xa0]*oui[\s\xa0]*\/[\s\xa0]*non[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\w]*)",
+        "group_index": 2,
+    },
+    {
+        "field": "Bronchiolite oblitérante",
+        "pattern": r"Bronchiolite[\s\xa0]*(oblitérante|constrictive)(?:[\s\xa0]*\((0[\s\xa0]*ou[\s\xa0]*1)\))?[\s\xa0]*:[\s\xa0]*(\w)",
+        "group_index": 3,
+    },
+    {
+        "field": "Fibro-élastose interstitielle",
+        "pattern": r"(Fibro(?:-|\s*)?élastose[\s\xa0]*interstitielle [\s\xa0]*\([\s\xa0]*0[\s\xa0]*ou[\s\xa0]*1[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\w]*)",
+        "group_index": 2,
+    },
+    {
+        "field": "PNN dans les cloisons alvéolaires",
+        "pattern": r"((PNN[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*capillaires[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*|PNN[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*cloisons[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([^\n]+))",
+        "group_index": 3,
+    },
+    {
+        "field": "Cellules mononucléées",
+        "pattern": r"(Cellules[\s\xa0]*mononucléées[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*capillaires[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*|Cellules[\s\xa0]*mononuclées[\s\xa0]*\(lymphocytes[\s\xa0]*ou[\s\xa0]*macrophages[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*cloisons[\s\xa0]*alvéolaires\)[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n]+)",
+        "group_index": 2,
+    },
+    {
+        "field": "Dilatation des capillaires alvéolaires",
+        "pattern": r"(Dilatation[\s\xa0]*des[\s\xa0]*capillaires[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n]+)",
+        "group_index": 2,
+    },
+    {
+        "field": "Œdème des cloisons alvéolaires",
+        "pattern": r"((Œdème|Oedème)[\s\xa0]*des[\s\xa0]*cloisons[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+        "group_index": 3,
+    },
+    {
+        "field": "Thrombi fibrineux dans les capillaires alvéolaires",
+        "pattern": r"(Thrombi[\s\xa0]*fibrineux[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*capillaires[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+        "group_index": 2,
+    },
+    {
+        "field": "Débris cellulaires dans les cloisons alvéolaires",
+        "pattern": r"(Débris[\s\xa0]*cellulaires[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*cloisons[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+        "group_index": 2,
+    },
+    {
+        "field": "Epaississement fibreux des cloisons alvéolaires",
+        "pattern": r"(Epaississement[\s\xa0]*fibreux[\s\xa0]*des[\s\xa0]*cloisons[\s\xa0]*alvéolaires[\s\xa0]*(?:\w*)?\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+        "group_index": 2,
+    },
+    {
+        "field": "Hyperplasie pneumocytaire",
+        "pattern": r"(Hyperplasie[\s\xa0]*pneumocytaire[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+        "group_index": 2,
+    },
+    {
+        "field": "PNN dans les espaces alvéolaires",
+        "pattern": r"(PNN[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*espaces[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*|PNN[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*espaces[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([^\n]+)",
+        "group_index": 2,
+    },
+    {
+        "field": "Macrophages dans les espaces alvéolaires",
+        "pattern": r"(Macrophages[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*espaces[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+        "group_index": 2,
+    },
+    {
+        "field": "Bourgeons conjonctifs dans les espaces alvéolaires",
+        "pattern": r"(Bourgeons[\s\xa0]*conjonctifs[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*espaces[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+        "group_index": 2,
+    },
+    {
+        "field": "Hématies dans les espaces alvéolaires",
+        "pattern": r"(Hématies[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*espaces[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+        "group_index": 2,
+    },
+    {
+        "field": "Membranes hyalines",
+        "pattern": r"(Membranes[\s\xa0]*hyalines[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+        "group_index": 2,
+    },
+    {
+        "field": "Fibrine dans les espaces alvéolaires",
+        "pattern": r"(Fibrine[\s\xa0]*dans[\s\xa0]*les[\s\xa0]*espaces[\s\xa0]*alvéolaires[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+        "group_index": 2,
+    },
+    {
+        "field": "Inflammation sous-pleurale, septale, bronchique ou bronchiolaire",
+        "pattern": r"(Inflammation[\s\xa0]*sous(\-|[\s\xa0])?pleurale,[\s\xa0]*septale,[\s\xa0]*bronchique[\s\xa0]*ou[\s\xa0]*bronchiolaire[\s\xa0]*\(0[\s\xa0]*à[\s\xa0]*\+\+\+[\s\xa0]*\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+        "group_index": 3,
+    },
+    {
+        "field": "BALT",
+        "pattern": r"(BALT[\s\xa0]*\(oui\/non\)[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+        "group_index": 2,
+    },
+    {
+        "field": "Thrombus fibrino-cruorique",
+        "pattern": r"(Thrombus[\s\xa0]*fibrino(\-|[\s\xa0]|)?cruorique[\s\xa0]*(\(oui\/non\)|)?[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+        "group_index": 4,
+    },
+    {
+        "field": "Nécrose ischémique",
+        "pattern": r"(Nécrose[\s\xa0]*ischémique[\s\xa0]*(\(oui\/non\)|)?[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+        "group_index": 3,
+    },
+    {
+        "field": "Inclusions virales",
+        "pattern": r"(Inclusions[\s\xa0]*virales[\s\xa0]*(\(oui\/non\)|)?[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+        "group_index": 3,
+    },
+    {
+        "field": "Agent pathogène",
+        "pattern": r"(Agent[\s\xa0]*pathogène[\s\xa0]*(\(oui\/non\)|)?[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+        "group_index": 3,
+    },
+    {
+        "field": "Eosinophilie (interstitielle/alvéolaire)",
+        "pattern": r"(Eosinophilie[\s\xa0]*(\(interstitielle\/alvéolaire\)|)?[\s\xa0]*(\(oui\/non\)|)?[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+        "group_index": 4,
+    },
+    {
+        "field": "Remodelage vasculaire",
+        "pattern": r"(Remodelage[\s\xa0]*vasculaire[\s\xa0]*[\s\xa0]*(\(oui\/non\)|)?[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+        "group_index": 3,
+    },
+    {
+        "field": "Matériel étranger d’inhalation",
+        "pattern": r"(Matériel[\s\xa0]*étranger[\s\xa0]*d’inhalation[\s\xa0]*(\(oui\/non\)|)?[\s\xa0]*:*:[\s\xa0]*)([\S]*[^\n])",
+        "group_index": 3,
+    },
+    {
+        "field": "Conclusion",
+        "pattern": r"((Conclusion|C[\s\xa0]O[\s\xa0]N[\s\xa0]C[\s\xa0]L[\s\xa0]U[\s\xa0]S[\s\xa0]I[\s\xa0]O[\s\xa0]N)[\s\xa0]*(:.*|))([\s\S]*)",
+        "group_index": 4,
+    },
 
     #-------------------------------------------------------------------------------------------------------------
     
@@ -581,6 +674,8 @@ COLUMN_ORDER = [
     "Sexe",
     "Date de prélèvement",
     "Prescripteur",
+    "Modele_BTB",
+    "Texte_libre_complet",
    #---------------------EXTRACTION LBA----------------------
     # "Macrophages",
     # "Lymphocytes",
@@ -606,40 +701,40 @@ COLUMN_ORDER = [
 
 
     #---------------------EXTRACTION BTB----------------------
-    # "Technique",
-    # "Niveaux de coupes",
-    # "Site",
-    # "Nombre de fragment alvéolaire",
-    # "Bronches/Bronchioles",
-    # "Infiltrat",
-    # "Bronchiolite Lymphocytaire",
-    # "Inflammation Lymphocytaire",
-    # "Bronchiolite oblitérante",
-    # "Fibro-élastose interstitielle",
-    # "PNN dans les cloisons alvéolaires",
-    # "Cellules mononucléées",
-    # "Dilatation des capillaires alvéolaires",
-    # "Œdème des cloisons alvéolaires",
-    # "Thrombi fibrineux dans les capillaires alvéolaires",
-    # "Débris cellulaires dans les cloisons alvéolaires",
-    # "Epaississement fibreux des cloisons alvéolaires",
-    # "Hyperplasie pneumocytaire",
-    # "PNN dans les espaces alvéolaires",
-    # "Macrophages dans les espaces alvéolaires",
-    # "Bourgeons conjonctifs dans les espaces alvéolaires",
-    # "Hématies dans les espaces alvéolaires",
-    # "Membranes hyalines",
-    # "Fibrine dans les espaces alvéolaires",
-    # "Inflammation sous-pleurale, septale, bronchique ou bronchiolaire",
-    # "BALT",
-    # "Thrombus fibrino-cruorique",
-    # "Nécrose ischémique",
-    # "Inclusions virales",
-    # "Agent pathogène",
-    # "Eosinophilie (interstitielle/alvéolaire)",
-    # "Remodelage vasculaire",
-    # "Matériel étranger d’inhalation",
-    # "Conclusion",
+    "Technique",
+    "Niveaux de coupes",
+    "Site",
+    "Nombre de fragment alvéolaire",
+    "Bronches/Bronchioles",
+    "Infiltrat",
+    "Bronchiolite Lymphocytaire",
+    "Inflammation Lymphocytaire",
+    "Bronchiolite oblitérante",
+    "Fibro-élastose interstitielle",
+    "PNN dans les cloisons alvéolaires",
+    "Cellules mononucléées",
+    "Dilatation des capillaires alvéolaires",
+    "Œdème des cloisons alvéolaires",
+    "Thrombi fibrineux dans les capillaires alvéolaires",
+    "Débris cellulaires dans les cloisons alvéolaires",
+    "Epaississement fibreux des cloisons alvéolaires",
+    "Hyperplasie pneumocytaire",
+    "PNN dans les espaces alvéolaires",
+    "Macrophages dans les espaces alvéolaires",
+    "Bourgeons conjonctifs dans les espaces alvéolaires",
+    "Hématies dans les espaces alvéolaires",
+    "Membranes hyalines",
+    "Fibrine dans les espaces alvéolaires",
+    "Inflammation sous-pleurale, septale, bronchique ou bronchiolaire",
+    "BALT",
+    "Thrombus fibrino-cruorique",
+    "Nécrose ischémique",
+    "Inclusions virales",
+    "Agent pathogène",
+    "Eosinophilie (interstitielle/alvéolaire)",
+    "Remodelage vasculaire",
+    "Matériel étranger d’inhalation",
+    "Conclusion",
     #-----------------------------------------------------------
 ]
 
@@ -660,7 +755,8 @@ if __name__ == "__main__":
         df[col] = df[col].apply(remove_illegal_chars)
     #df['Conclusion'] = df['Conclusion'].apply(sanitize_for_excel)
 
-    df.to_excel(".././output/BTB_structurated_raw.xlsx", index=False)
+    filename = "BTB_structurated_txt"
+    df.to_excel(f".././output/{filename}.xlsx", index=False)
     print(
-        "Extraction complete! You can see the result in the Extractor folder named as 'BTB_structurated_raw.xlsx'"
+        f"Extraction complete! You can see the result in the output folder named as '{filename}.xlsx'"
     )
