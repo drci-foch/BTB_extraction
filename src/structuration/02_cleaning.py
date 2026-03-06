@@ -283,3 +283,29 @@ df.to_excel("../output/BTB_structurated_cleaned.xlsx", index=False)
 print("Export terminé: BTB_structurated_cleaned.xlsx")
 print(f"Nombre total d'enregistrements: {len(df)}")
 print(f"Nombre d'alertes: {len(df[df['Alertes_Recap'] != 'OK'])}")
+# ============================================================================
+# EXPORT - Patients LUTECE sans BTB avec Nom/Prénom depuis Easily
+# ============================================================================
+easily_df = pd.read_csv(
+    r"C:\Users\benysar\Documents\GitHub\BTB_extraction\src\output\extract_easily_sans_btb.csv",
+    sep=",",
+    encoding="utf-8",
+)
+
+# Harmoniser l'IPP en string
+easily_df["IPP"] = easily_df["IPP"].astype(str).str.strip().str.zfill(9)
+
+# Récupérer les NATT depuis transplants
+natt_df = (
+    transplants_df[~transplants_df["IPP_LUTECE"].isin(patients_btb)][
+        ["IPP_LUTECE", "NATT"]
+    ]
+    .drop_duplicates()
+    .rename(columns={"IPP_LUTECE": "IPP"})
+)
+
+# Merge Easily + NATT
+patients_sans_btb = easily_df.merge(natt_df, on="IPP", how="left")
+
+patients_sans_btb.to_excel("../output/patients_LUTECE_sans_BTB.xlsx", index=False)
+print(f"Export patients sans BTB: {len(patients_sans_btb)} lignes")

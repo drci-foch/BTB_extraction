@@ -1,118 +1,138 @@
-import fitz  # PyMuPDF
 import os
+import re
 import shutil
+import fitz
+from tqdm import tqdm
 
 
-def check_keywords(filepath, inclusion_keywords, exclusion_keywords):
-    """Check if any of the specified inclusion or exclusion keywords exist within the PDF document."""
+def normalize_text(text):
+    """
+    Normalise le texte pour gérer les artefacts de conversion HTML→TXT :
+    - Supprime les espaces multiples/insérés dans les mots
+    - Supprime les accents
+    - Met en majuscule
+    """
+    text = text.upper()
+    # Supprimer tous les espaces, retours à la ligne, tabs
+    text_no_spaces = re.sub(r"\s+", "", text)
+    return text_no_spaces
+
+
+def build_flexible_pattern(keyword):
+    """
+    Construit un regex qui tolère des espaces/retours à la ligne
+    entre chaque caractère du mot-clé.
+    Ex: "BTB" → r"B\s*T\s*B"
+    """
+    keyword_upper = keyword.upper().strip()
+    # Insérer \s* entre chaque caractère
+    chars = list(keyword_upper)
+    pattern = r"\s*".join(re.escape(c) for c in chars)
+    return re.compile(pattern, re.IGNORECASE)
+
+
+# Mots-clés avec variantes (fautes de frappe, abréviations, singulier/pluriel)
+INCLUSION_KEYWORDS = [
+    "BIOPSIES TRANSBRONCHIQUES",
+    "BIOPSIE TRANSBRONCHIQUE",
+    "BIOPSIES TRANS BRONCHIQUES",
+    "BIOPSIE TRANS BRONCHIQUE",
+    "BIOSPIE TRANSBRONCHIQUE",  # typo connue
+    "BIOPSIE TRANS-BRONCHIQUE",
+    "BIOPSIES TRANS-BRONCHIQUES",
+]
+
+EXCLUSION_KEYWORDS = [
+    "ANNULÉ",
+    "ANNULE",
+]
+
+# Pré-compiler les regex flexibles
+INCLUSION_PATTERNS = [build_flexible_pattern(kw) for kw in INCLUSION_KEYWORDS]
+EXCLUSION_PATTERNS = [build_flexible_pattern(kw) for kw in EXCLUSION_KEYWORDS]
+
+
+def check_keywords_flexible(text):
+    """Vérifie les mots-clés avec double stratégie : regex flexible + texte sans espaces."""
+    text_upper = text.upper()
+    text_no_spaces = normalize_text(text)
+
+    # Stratégie 1 : regex flexible (tolère espaces insérés)
+    has_inclusion = any(p.search(text_upper) for p in INCLUSION_PATTERNS)
+
+    # Stratégie 2 : fallback sur texte sans espace (attrape les cas extrêmes)
+    if not has_inclusion:
+        keywords_no_spaces = [
+            re.sub(r"\s+", "", kw.upper()) for kw in INCLUSION_KEYWORDS
+        ]
+        has_inclusion = any(kw in text_no_spaces for kw in keywords_no_spaces)
+
+    has_exclusion = any(p.search(text_upper) for p in EXCLUSION_PATTERNS)
+    if not has_exclusion:
+        excl_no_spaces = [re.sub(r"\s+", "", kw.upper()) for kw in EXCLUSION_KEYWORDS]
+        has_exclusion = any(kw in text_no_spaces for kw in excl_no_spaces)
+
+    return has_inclusion, has_exclusion
+
+
+def check_file(filepath):
+    """Lit et vérifie un fichier PDF ou TXT."""
+    ext = os.path.splitext(filepath)[1].lower()
     try:
-        doc = fitz.open(filepath)
-        has_inclusion_keyword, has_exclusion_keyword = False, False
-        for page in doc:
-            page_text = page.get_text().upper()
-            if not has_inclusion_keyword:
-                for keyword in inclusion_keywords:
-                    if keyword.upper() in page_text:
-                        has_inclusion_keyword = True
-                        break  # Stop checking if we've found an inclusion keyword
-            if not has_exclusion_keyword:
-                for keyword in exclusion_keywords:
-                    if keyword.upper() in page_text:
-                        has_exclusion_keyword = True
-                        break  # Stop checking if we've found an exclusion keyword
-            if has_inclusion_keyword and has_exclusion_keyword:
-                break  # No need to check further if both conditions are met
-        doc.close()
-        return has_inclusion_keyword, has_exclusion_keyword, None
-    except ValueError as e:
-        if "document closed or encrypted" in str(e):
-            return False, False, "encrypted"
+        if ext == ".pdf":
+            doc = fitz.open(filepath)
+            text = "\n".join(page.get_text() for page in doc)
+            doc.close()
+        elif ext == ".txt":
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                text = f.read()
         else:
-            return False, False, str(e)
+            return False, False, f"unsupported: {ext}"
+
+        has_incl, has_excl = check_keywords_flexible(text)
+        return has_incl, has_excl, None
+
     except Exception as e:
         return False, False, str(e)
 
 
-def convert_and_save_if_contains_keyword(
-    folder_path, inclusion_keywords, exclusion_keywords, destination_folder
-):
-    """Convert PDFs containing specified inclusion keywords to text files with preserved formatting unless exclusion keywords are also found. Copies all qualifying PDFs to a destination folder."""
+def collect_files(folder_path, extensions=(".pdf", ".txt")):
+    all_files = []
+    for root, dirs, files in os.walk(folder_path):
+        for f in files:
+            if f.lower().endswith(extensions):
+                all_files.append(os.path.join(root, f))
+    return sorted(all_files)
+
+
+def filter_and_copy(folder_path, destination_folder):
     os.makedirs(destination_folder, exist_ok=True)
 
-    # Get list of all PDF files in source folder and sort them
-    all_pdf_files = sorted([f for f in os.listdir(folder_path) if f.endswith(".pdf")])
+    all_files = collect_files(folder_path)
+    print(f"📂 {len(all_files)} fichiers trouvés (récursif)")
 
-    # Check if destination folder has any PDF files
-    dest_pdf_files = sorted(
-        [f for f in os.listdir(destination_folder) if f.endswith(".pdf")]
-    )
-
-    start_index = 0
-    if dest_pdf_files:
-        # Find the last processed file
-        last_processed = dest_pdf_files[-1]
-        print(f"Last processed file: {last_processed}")
-
-        # Find its index in the source folder
-        if last_processed in all_pdf_files:
-            last_index = all_pdf_files.index(last_processed)
-            start_index = last_index + 1
-            print(f"Continuing from file index {start_index} of {len(all_pdf_files)}")
-        else:
-            print(
-                f"Warning: Last processed file {last_processed} not found in source folder. Starting from beginning."
-            )
-    else:
-        print("No files found in destination folder. Starting from the beginning.")
-
-    # Slice the list to get only files after the start_index
-    files_to_process = all_pdf_files[start_index:]
-
-    # Create error log file or append to existing one
     error_log_path = os.path.join(destination_folder, "error_documents.txt")
-    error_mode = "a" if os.path.exists(error_log_path) else "w"
+    saved = 0
+    errors = 0
 
-    print(
-        f"Total files: {len(all_pdf_files)}, Files to process: {len(files_to_process)}"
-    )
+    with open(error_log_path, "w") as error_log:
+        for filepath in tqdm(all_files, desc="🔍 Filtrage"):
+            has_incl, has_excl, error = check_file(filepath)
+            if error:
+                error_log.write(f"{filepath} | {error}\n")
+                errors += 1
+                continue
+            if has_incl and not has_excl:
+                shutil.copy(filepath, destination_folder)
+                saved += 1
 
-    with open(error_log_path, error_mode) as error_log:
-        for filename in files_to_process:
-            pdf_path = os.path.join(folder_path, filename)
-            try:
-                has_inclusion_keyword, has_exclusion_keyword, error = check_keywords(
-                    pdf_path, inclusion_keywords, exclusion_keywords
-                )
-
-                if error:
-                    # Log the problematic document
-                    error_log.write(f"{filename}\n")
-                    print(f"Could not process {filename}. Reason: {error}")
-                    continue
-
-                if has_inclusion_keyword and not has_exclusion_keyword:
-                    shutil.copy(pdf_path, destination_folder)
-                    print(
-                        f"Copied {filename} into {destination_folder} because it contains the inclusion keyword(s) and not the exclusion keyword."
-                    )
-            except Exception as e:
-                # Log any other unexpected errors
-                error_log.write(f"{filename}\n")
-                print(f"Error processing {filename}: {str(e)}")
+    print(f"\n✅ {saved} fichiers copiés, ❌ {errors} erreurs")
+    print(f"📁 Destination : {os.path.abspath(destination_folder)}")
 
 
-folder_path = "../../data/extract_all/"
-inclusion_keywords = [
-    "BIOPSIES TRANSBRONCHIQUES",
-    "BIOPSIE TRANSBRONCHIQUE",
-    "BIOPSIES TRANSBRONCHIQUE",
-    "BIOPSIE TRANSBRONCHIQUES",
-    "BTB",
-    "BIOSPIE TRANSBRONCHIQUE",
-]
-# inclusion_keywords = ["LAVAGE BRONCHO ALVEOLAIRE", "LAVAGE BRONCHOALVEOLAIRE", "LAVAGE BRONCHO-ALVEOLAIRE", "LBA", "BIOSPIE TRANSBRONCHIQUE"]
-exclusion_keywords = ["Annulé"]
-destination_folder = "../../data/extract_filter_btb/"
-convert_and_save_if_contains_keyword(
-    folder_path, inclusion_keywords, exclusion_keywords, destination_folder
+folder_path = (
+    r"C:\Users\benysar\Documents\GitHub\BTB_extraction\data\EDS_archemed_extract"
 )
+destination_folder = r"C:\Users\benysar\Documents\GitHub\BTB_extraction\data\extract_filtrer_btb_archemed"
+
+filter_and_copy(folder_path, destination_folder)
