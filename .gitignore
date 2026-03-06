@@ -5,7 +5,7 @@ __pycache__/
 jdk*/
 # C extensions
 *.so
-*.txt
+
 *.pdf
 *.png
 *.jar 
@@ -84,6 +84,7 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+sandbox*.ipynb
 
 # IPython
 profile_default/

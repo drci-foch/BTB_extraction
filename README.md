@@ -1,25 +1,130 @@
-# Transbronchial Biopsy Document Extractor 📄🔍
+# BTB Extraction - Transbronchial Biopsy Document Extractor
 
-## Overview
+Pipeline d'extraction et de structuration automatique de comptes-rendus de biopsies transbronchiques (BTB) depuis les bases de donnees hospitalieres.
 
-This repository contains the development version of the Transbronchial Biopsy Document Extractor, a tool designed to automate the extraction of information from non-structured or semi-structured documents of transbronchial biopsies. Leveraging a combination of regular expressions (regex) and natural language processing (NLP) techniques, this tool aims to streamline the processing of biopsy reports by extracting key data points, such as patient information, biopsy findings, creation of variables, and diagnostic conclusions.
+## Architecture
 
-## Features 🌟
-- **Hospital Database Connections** 🏥: Establishes secure connections to hospital databases, allowing for the retrieval and updating of patient records. This feature ensures seamless data flow between the system and healthcare providers' databases, enhancing patient data management and accessibility.
-- **PDF Parsing with JAR Tools** 📄➡️📜: Implements a Java-based tool to convert PDF documents into text, facilitating the extraction of relevant information from patient records and biopsy reports. This process enables the system to handle a wider variety of document formats, improving the flexibility and comprehensiveness of data extraction and analysis.
-- **Regex Patterns** 🔍: Custom regex patterns are used to identify and extract standardized information from the text, such as patient IDs, dates, and specific medical terminology related to transbronchial biopsies.
-- **Data Normalization** 📊: Converts extracted information into a structured format, facilitating easier integration with databases and further analysis.
-- **Work in Progress** 🚧: Ongoing efforts to improve extraction accuracy, expand the range of document types processed (NLP Analysis 🧠), and refine the user interface for easier use by medical professionals and researchers.
+```
+src/
+  config.py                  # Configuration centralisee (chemins, credentials)
+  extraction/
+    db_easily.py             # Extraction SQL Server (Easily/METADONE)
+    db_archemed.py           # Extraction PostgreSQL (EDS - ARCHEMED)
+    filter_btb.py            # Filtrage documents BTB par mots-cles
+    pdf_to_text.py           # Conversion PDF -> TXT (JAR Java)
+  structuration/
+    patterns.py              # 38 patterns regex pour l'extraction BTB
+    extractors.py            # Fonctions partagees d'extraction de texte
+    extract_btb.py           # Extraction des champs BTB depuis les fichiers .txt
+    clean_btb.py             # Nettoyage, deduplication, merge LUTECE
+    clean_lba.py             # Nettoyage LBA (Lavage Bronchoalveolaire)
+    verify.py                # Rapport qualite des donnees
+  output/                    # Fichiers Excel generes
+run_pipeline.py              # Point d'entree unique
+```
 
-## Installation 🛠️
+## Installation
 
-1. Clone this repository to your local machine.
-2. Ensure you have Python 3.11+ installed.
-3. Install required dependencies:
-``````
+```bash
+git clone https://github.com/drci-foch/BTB_extraction.git
+cd BTB_extraction
+python -m venv .venv
+.venv\Scripts\activate       # Windows
 pip install -r requirements.txt
-``````
+```
+
+Copier le fichier de configuration et renseigner les credentials :
+
+```bash
+cp .env.example .env
+# Editer .env avec les identifiants de connexion aux bases
+```
 
 ## Usage
-Developement ongoing, add the usage when classes are made
 
+### Lancer le pipeline standard
+
+```bash
+python run_pipeline.py --all
+```
+
+Cela execute dans l'ordre : `extract_easily` -> `pdf_to_text` -> `filter` -> `extract_btb` -> `clean` -> `clean_lba` -> `verify`.
+
+Les dossiers manquants sont crees automatiquement.
+
+### Extraction ARCHEMED (one-shot)
+
+L'extraction depuis la base ARCHEMED n'est pas incluse dans `--all` car elle ne doit etre lancee qu'une seule fois. Pour l'executer :
+
+```bash
+python run_pipeline.py --steps extract_archemed
+```
+
+### Lancer des etapes specifiques
+
+```bash
+python run_pipeline.py --steps extract_btb clean verify
+```
+
+### Lister les etapes disponibles
+
+```bash
+python run_pipeline.py --list
+```
+
+**Etapes `--all` (pipeline standard) :**
+
+| Etape | Description |
+|-------|-------------|
+| `extract_easily` | Extraction depuis la BDD Easily (SQL Server) |
+| `pdf_to_text` | Conversion PDF vers TXT via JAR Java |
+| `filter` | Filtrage des documents contenant des BTB |
+| `extract_btb` | Extraction regex des 38 champs medicaux |
+| `clean` | Nettoyage, deduplication, merge avec LUTECE |
+| `clean_lba` | Nettoyage des donnees LBA |
+| `verify` | Generation du rapport qualite (BTB_summary.xlsx) |
+
+**Etapes supplementaires (sur demande) :**
+
+| Etape | Description |
+|-------|-------------|
+| `extract_archemed` | Extraction depuis la BDD ARCHEMED (PostgreSQL) |
+
+### Lancer un script individuellement
+
+```bash
+python -m src.structuration.extract_btb <dossier_txt>
+python -m src.structuration.clean_btb
+python -m src.structuration.verify
+```
+
+## Configuration
+
+Les credentials de base de donnees et les chemins sont geres via :
+
+- **`.env`** : variables d'environnement (non commite, voir `.env.example`)
+- **`src/config.py`** : chemins resolus relativement a la racine du projet
+
+## Donnees extraites
+
+Le pipeline extrait 38+ champs depuis les comptes-rendus BTB :
+
+- **Identification** : IPP, Nom, Prenom, Date de naissance, Sexe
+- **Prelevement** : Date, Prescripteur, Technique, Site, Niveaux de coupes
+- **Histologie** : Infiltrat, Bronchiolite, Inflammation, Fibrose, PNN, etc.
+- **Validation** : Alertes dates, verification LUTECE, comptage biopsies
+
+## Fichiers de sortie
+
+| Fichier | Description |
+|---------|-------------|
+| `BTB_structurated_txt.xlsx` | Extraction brute des champs |
+| `BTB_structurated_cleaned.xlsx` | Donnees nettoyees avec alertes |
+| `LBA_structurated_cleaned.xlsx` | Donnees LBA nettoyees |
+| `BTB_summary.xlsx` | Rapport qualite (valeurs uniques, NA par annee) |
+
+## Pre-requis
+
+- Python 3.11+
+- Java JDK 21+ (pour la conversion PDF)
+- Acces reseau aux bases hospitalieres (pour les etapes `extract_easily` / `extract_archemed`)

@@ -8,12 +8,18 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.11"
 pandas = "^2.2.1"
-ipykernel = "^6.29.3"
 openpyxl = "^3.1.2"
-matplotlib = "^3.8.3"
 pymupdf = "^1.23.25"
 pyodbc = "^5.1.0"
+chardet = ">=5.0"
+psycopg2-binary = ">=2.9"
+beautifulsoup4 = ">=4.12"
+tqdm = ">=4.66"
+python-dotenv = ">=1.0"
 
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.3"
+matplotlib = "^3.8.3"
 
 [build-system]
 requires = ["poetry-core"]
