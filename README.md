@@ -48,13 +48,13 @@ cp .env.example .env
 python run_pipeline.py --all
 ```
 
-Cela execute dans l'ordre : `extract_easily` -> `pdf_to_text` -> `filter` -> `extract_btb` -> `clean` -> `clean_lba` -> `verify`.
+Cela execute dans l'ordre : `extract_easily`  -> `filter` ->  `pdf_to_text` -> `extract_btb` -> `clean`.
 
 Les dossiers manquants sont crees automatiquement.
 
 ### Extraction ARCHEMED (one-shot)
 
-L'extraction depuis la base ARCHEMED n'est pas incluse dans `--all` car elle ne doit etre lancee qu'une seule fois. Pour l'executer :
+L'extraction depuis l'EDS pour récupérer les BTB d'ARCHMEMED n'est pas incluse dans `--all` car elle ne doit etre lancee qu'une seule fois. Pour l'executer :
 
 ```bash
 python run_pipeline.py --steps extract_archemed
